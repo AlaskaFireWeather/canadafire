@@ -554,7 +554,7 @@ static PyObject* _canadafire_canadafire(PyObject *module, PyObject *args, PyObje
 // ============================================================
 // Random other Python C Extension Stuff
 static PyMethodDef CanadafireMethods[] = {
-    {"canadafire",    // Name of method
+    {"canadafire",
         _canadafire_canadafire,
         METH_VARARGS | METH_KEYWORDS, _canadafire_canadafire_docstring},
     {NULL, NULL, 0, NULL}
@@ -563,7 +563,7 @@ static PyMethodDef CanadafireMethods[] = {
 /* This initiates the module using the above definitions. */
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
-    "_canadafire",    // Name of module
+    "canadafire",    // Name of module
     module_docstring,    // Per-module docstring
     -1,  /* size of per-interpreter state of the module,
                  or -1 if the module keeps state in global variables. */
