@@ -2,11 +2,10 @@ import numpy as np
 import inspect
 import canadafire
 
-#print(canadafire.__doc__)
-#print()
-#print(canadafire.canadafire.__doc__)
-#print()
-#print(inspect.signature(canadafire.canadafire))
+# Sample program using the canadafire Python extension.
+
+print(canadafire.canadafire.__doc__)
+print()
 
 tin = np.array( [[15.,16.], [31.,32.]] )
 hin = np.array( [[70.,80.], [20.,15.]] )

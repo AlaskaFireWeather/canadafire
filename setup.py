@@ -26,7 +26,7 @@ import numpy
 
 from distutils.core import setup, Extension
 
-canadafire_mod = Extension('canadafire', sources=['canadafire.c'],
+canadafire_mod = Extension('canadafire', sources=['src/canadafire.c'],
     include_dirs=[numpy.get_include()])
 
 setup(name = 'canadafire',
