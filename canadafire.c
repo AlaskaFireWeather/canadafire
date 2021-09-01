@@ -42,6 +42,31 @@ static inline double ipow(double base, int exp)
     return result;
 }
 
+/** Checks that arr has same rank and dimensions as arr0 */
+bool check_rank_dims(char const *name0, PyArrayObject *arr0, char const *name, PyArrayObject *arr)
+{
+    char msg[256];
+
+    // Check rank
+    if (PyArray_NDIM(arr) != PyArray_NDIM(arr0)) {
+        sprintf(msg, "Parameter %s must have same rank as %s", name, name0);
+        PyErr_SetString(PyExc_TypeError, msg);
+        return false;
+    }
+
+    // Check dimensions
+    for (int i=0; i<PyArray_NDIM(arr); ++i) {
+        if (PyArray_DIM(arr,i) != PyArray_DIM(arr0,i)) {
+            sprintf(msg, "Parameter %s must have same dimensions as %s: but dimension %d is %ld instead of %ld", name, name0, i, (long)PyArray_DIM(arr,i), (long)PyArray_DIM(arr0,i));
+            PyErr_SetString(PyExc_TypeError, msg);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
 // =====================================================================
 // The core computation, converted from Fortran
 
@@ -298,7 +323,7 @@ double *_bui, double *_ffm, double *_isi, double *_fwi, double *_dsr, double *_d
 // ===================================================================
 // The Python-callable method
 
-static char _canadafire_canadafire_docstring[] = "\
+static char canadafire_canadafire_docstring[] = "\
 Usage: canadafire(\n\
     bui, ffmc, isi, fwi, dmc, dc = canadafire(tin, hin, win, rin, imonth, \n\
     ffmc0=85.5, dmc0=6.0, dc0=15.0, debug=False)\n\
@@ -309,7 +334,7 @@ Compute the canadafire index on a number of regions / gridcells.  See:\n\
 Dimensions\n\
 ----------\n\
   xy:\n\
-    A space dimension.  Typically x and y dimensions collapsed; or a\n\
+    One or more space dimensions.  Typically x and y; or a\n\
     set of individual regions.  There is no interaction between\n\
     gridpoints.\n\
   time:\n\
@@ -391,7 +416,7 @@ dc(xy,time): Drought Code (double)\n\
     and the amount of smoldering in deep duff layers and large\n\
     logs.";
 
-static PyObject* _canadafire_canadafire(PyObject *module, PyObject *args, PyObject *kwargs)
+static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObject *kwargs)
 {
     // Input arrays
     PyArrayObject *tin;  // Temperature [C]
@@ -422,7 +447,7 @@ static PyObject* _canadafire_canadafire(PyObject *module, PyObject *args, PyObje
         &ffmc00, &dmc00, &dc00, &debug
         )) return NULL;
     const char *input_names[] = {"tin", "hin", "win", "rin"};
-    PyArrayObject *inputs[] = {tin, hin, win, rin};
+    PyArrayObject *inputs0[] = {tin, hin, win, rin};
     const int ninputs = 4;
     char msg[256];
 
@@ -437,37 +462,44 @@ static PyObject* _canadafire_canadafire(PyObject *module, PyObject *args, PyObje
         fprintf(stderr, "\n");
     }
 
-    // Main arrays: Check types and sizes
-    PyArrayObject *arr0 = inputs[0];
+    // -----------------------------------------
+    // Make sure main arrays all have same rank and dimensions
     for (int i=0; i<ninputs; ++i) {
-        PyArrayObject *arr = inputs[i];
-        // Type
-        if (PyArray_DESCR(arr)->type_num != NPY_DOUBLE) {
-            sprintf(msg, "Parameter %s must have type double", input_names[i]);
-            PyErr_SetString(PyExc_TypeError, msg);
+        if (!check_rank_dims(input_names[i], inputs0[i], input_names[0], inputs0[0]))
             return NULL;
-        }
-
-        // Rank
-        if (PyArray_NDIM(arr) != 2) {
-            sprintf(msg, "Parameter %s must have 2 dimensions: (space,time)", input_names[i]);
-            PyErr_SetString(PyExc_TypeError, msg);
-            return NULL;
-        }
-
-        // Dimensions
-        if ((PyArray_DIM(arr, 0) != PyArray_DIM(arr0, 0)) || (PyArray_DIM(arr, 1) != PyArray_DIM(arr0, 1))) {
-            sprintf(msg,
-                "All input parameters must have same dimension as first (%d, %d); but %s has (%d, %d)",
-                (int)PyArray_DIM(arr0,0), (int)PyArray_DIM(arr0,1),
-                input_names[i],
-                (int)PyArray_DIM(arr,0), (int)PyArray_DIM(arr,1));
-            PyErr_SetString(PyExc_TypeError, msg);
-            return NULL;
-        }
     }
 
-    // imonth: Check type and size
+    // -----------------------------------------
+    // Collapse space dimensions
+
+    // Save original shape
+    int ndim0 = PyArray_NDIM(tin);
+    npy_intp const ntime = PyArray_DIM(tin, ndim0-1);
+    npy_intp _dims0[ndim0];
+    for (int j=0; j<ndim0; ++j) _dims0[j] = PyArray_DIM(tin,j);
+    PyArray_Dims shape0 = {_dims0, ndim0};
+
+    // Reshape to rank 2
+    npy_intp nxy = 1;
+    {
+        for (int j=0; j<ndim0-1; ++j) nxy *= PyArray_DIM(inputs0[0],j);
+        npy_intp _dims1[] = {nxy, ntime};
+        PyArray_Dims shape1 = {_dims1, 2};
+
+        // This will copy arrays if not already in C order.
+        // That would be a good thing, since it would make time the lowest-stride dimension.
+        tin = (PyArrayObject *)PyArray_Newshape(tin, &shape1, NPY_CORDER);
+        if (!tin) return NULL;
+        hin = (PyArrayObject *)PyArray_Newshape(hin, &shape1, NPY_CORDER);
+        if (!hin) return NULL;
+        win = (PyArrayObject *)PyArray_Newshape(win, &shape1, NPY_CORDER);
+        if (!win) return NULL;
+        rin = (PyArrayObject *)PyArray_Newshape(rin, &shape1, NPY_CORDER);
+        if (!rin) return NULL;
+    }
+
+    // -------------------------------------------------
+    // imonth: Check type, rank and size
     // Type
     if (PyArray_DESCR(imonth)->type_num != NPY_INT) {
         PyErr_SetString(PyExc_TypeError, "Parameter imonth must have type int");
@@ -475,21 +507,20 @@ static PyObject* _canadafire_canadafire(PyObject *module, PyObject *args, PyObje
     }
 
     // Rank
-    if (PyArray_NDIM(imonth) != 2) {
+    if (PyArray_NDIM(imonth) != 1) {
         PyErr_SetString(PyExc_TypeError,
-            "Parameter imonth must have 2 dimensions: (space,time)");
+            "Parameter imonth must have rank 1");
         return NULL;
     }
 
     // Dimensions
-    if (PyArray_DIM(imonth, 0) != PyArray_DIM(arr0, 1)) {
-        sprintf(msg, "Parameter imonth must have length %d equal to the time dimension of other variables; but has length %d instead.", (int)PyArray_DIM(arr0,1), (int)PyArray_DIM(imonth,0));
+    if (PyArray_DIM(imonth, 0) != ntime) {
+        sprintf(msg, "Parameter imonth must have length %d equal to the time dimension of other variables; but has length %d instead.", (int)ntime, (int)PyArray_DIM(imonth,0));
         PyErr_SetString(PyExc_TypeError, msg);
         return NULL;
     }
 
     // -------------------------------------------------------------------------    
-
 
     // Output arrays
     PyArrayObject *ffmcout = (PyArrayObject *)PyArray_NewLikeArray(tin, NPY_ANYORDER, NULL, 0);
@@ -499,10 +530,11 @@ static PyObject* _canadafire_canadafire(PyObject *module, PyObject *args, PyObje
     PyArrayObject *buiout = (PyArrayObject *)PyArray_NewLikeArray(tin, NPY_ANYORDER, NULL, 0);
     PyArrayObject *dcout = (PyArrayObject *)PyArray_NewLikeArray(tin, NPY_ANYORDER, NULL, 0);
 
+
     // Loop through space; typically a 2D grid.  But could be (for
     // example) a small set of discrete regions for which we have
     // appropriate input data.
-    for (int ii=0; ii<PyArray_DIM(arr0,0); ++ii) {
+    for (int ii=0; ii<nxy; ++ii) {
 
         // enter in the inital values here
         // 3 fuel moisture codes, initialize
@@ -514,7 +546,7 @@ static PyObject* _canadafire_canadafire(PyObject *module, PyObject *args, PyObje
         // Loop through time.  Assumed to be solar noon on each of
         // April 1 -- September 30.  But it could be any set of
         // timepoints.
-        for (int ti=0; ti<PyArray_DIM(arr0,1); ++ti) {
+        for (int ti=0; ti<ntime; ++ti) {
 
             // Obtain values at this point in (space,time).
             const double t = *((double *)PyArray_GETPTR2(tin,ii,ti));
@@ -547,6 +579,21 @@ static PyObject* _canadafire_canadafire(PyObject *module, PyObject *args, PyObje
         }
     }
 
+    // ---------------------------------------------------------
+    // Reshape to original rank
+    ffmcout = (PyArrayObject *)PyArray_Newshape(ffmcout, &shape0, NPY_ANYORDER);
+    if (!ffmcout) return NULL;
+    isiout = (PyArrayObject *)PyArray_Newshape(isiout, &shape0, NPY_ANYORDER);
+    if (!isiout) return NULL;
+    fwiout = (PyArrayObject *)PyArray_Newshape(fwiout, &shape0, NPY_ANYORDER);
+    if (!fwiout) return NULL;
+    dmcout = (PyArrayObject *)PyArray_Newshape(dmcout, &shape0, NPY_ANYORDER);
+    if (!dmcout) return NULL;
+    buiout = (PyArrayObject *)PyArray_Newshape(buiout, &shape0, NPY_ANYORDER);
+    if (!buiout) return NULL;
+    dcout = (PyArrayObject *)PyArray_Newshape(dcout, &shape0, NPY_ANYORDER);
+    if (!dcout) return NULL;
+
     // Return a tuple of the output arrays we created.
     // https://stackoverflow.com/questions/3498210/returning-a-tuple-of-multipe-objects-in-python-c-api
     return PyTuple_Pack(6, buiout,ffmcout,isiout,fwiout,dmcout,dcout);
@@ -555,8 +602,8 @@ static PyObject* _canadafire_canadafire(PyObject *module, PyObject *args, PyObje
 // Random other Python C Extension Stuff
 static PyMethodDef CanadafireMethods[] = {
     {"canadafire",
-        _canadafire_canadafire,
-        METH_VARARGS | METH_KEYWORDS, _canadafire_canadafire_docstring},
+        canadafire_canadafire,
+        METH_VARARGS | METH_KEYWORDS, canadafire_canadafire_docstring},
     {NULL, NULL, 0, NULL}
 };
 

@@ -28,9 +28,8 @@ from distutils.core import setup, Extension
 
 canadafire_mod = Extension('canadafire', sources=['canadafire.c'],
     include_dirs=[numpy.get_include()])
-#                        include_dirs=['/usr/local/lib'])
 
 setup(name = 'canadafire',
         version='1.0',
-        description='Canada fire weather XYZ',
+        description='Computes Canada fire weather indices.',
         ext_modules = [canadafire_mod])
