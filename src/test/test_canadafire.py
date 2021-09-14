@@ -14,6 +14,8 @@ def read_data(fname):
 
     NOTE: The 183 columns are split between 4 lines of 50 columns
           each; + 33 on the last line of 4.
+
+    Returns: np.array[num_ensembles, 183 days]
     """
     data = list()
     with open(fname, 'r') as fin:
