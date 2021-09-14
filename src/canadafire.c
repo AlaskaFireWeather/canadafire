@@ -104,7 +104,7 @@ double *_bui, double *_ffm, double *_isi, double *_fwi, double *_dsr, double *_d
             // EQ 3b
             mr = mo
                 + 42.5*rf*exp(-100./(251.-mo)) * (1.-exp(-6.93/rf))
-                + sqr(0.0015 * (mo-150.)) * sqrt(rf);
+                + 0.0015 * sqr(mo-150.) * sqrt(rf);
         }
 
         // Condition 3
@@ -141,7 +141,7 @@ double *_bui, double *_ffm, double *_isi, double *_fwi, double *_dsr, double *_d
             // EQ 7a
             double const kl =
                 0.424 * (1.- pow((100.-h)/100, 1.7))
-                + (0.0694 * sqrt(w)) * ipow8(1.-((100.-h)/100.));
+                + (0.0694 * sqrt(w)) * (1. - ipow8((100.-h)/100.));
 
             // EQ 7b
             double const kw = kl * (0.581 * exp(0.0365*t));
@@ -298,7 +298,7 @@ double *_bui, double *_ffm, double *_isi, double *_fwi, double *_dsr, double *_d
     // EQ 30a
     double s;
     if(b > 1.) {
-        s = exp(pow(2.72*(0.434*log(b)), 0.647));
+        s = exp(2.72 * pow(0.434*log(b), 0.647));
     } else {
         s=b;
     }
@@ -324,7 +324,7 @@ double *_bui, double *_ffm, double *_isi, double *_fwi, double *_dsr, double *_d
 // The Python-callable method
 
 static char canadafire_canadafire_docstring[] = "\
-Usage: canadafire(\n\
+Usage:\n\
     bui, ffmc, isi, fwi, dmc, dc = canadafire(tin, hin, win, rin, imonth, \n\
     ffmc0=85.5, dmc0=6.0, dc0=15.0, debug=False)\n\
 \n\
@@ -423,7 +423,7 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
     PyArrayObject *hin;  // Relative Humidity [%, 0-100]
     PyArrayObject *win;  // Wind speed [km/h]
     PyArrayObject *rin;  // 24-hour integrated rain [mm]
-    PyArrayObject *imonth;    // Month of each point in time
+    PyArrayObject *imonth = NULL;    // Month of each point in time
     int debug = 0;          // Optional kwarg, are we debugging?
     double ffmc00 = 85.5;    // Initial fine fuel moisture code (FMC)
     double dmc00 = 6.0;      // Initial duff moister code (DMC)
@@ -431,26 +431,45 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
 
     // List must include ALL arg names, including positional args
     static char *kwlist[] = {
-        "tin", "hin", "win", "rin", "imonth",    // *args
-        "ffmc0", "dmc0", "dc0", "debug",         // **kwargs
+        "tin", "hin", "win", "rin",    // *args
+        "imonth", "ffmc0", "dmc0", "dc0", "debug",         // **kwargs
         NULL};
     // -------------------------------------------------------------------------    
     /* Parse the Python arguments into Numpy arrays */
     // p = "predicate" for bool: https://stackoverflow.com/questions/9316179/what-is-the-correct-way-to-pass-a-boolean-to-a-python-c-extension
-    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O!O!O!O!O!|dddp",
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O!O!O!O!|O!dddp",
         kwlist,
         &PyArray_Type, &tin,    // tin(yx,t)
         &PyArray_Type, &hin,    // hin(yx,t)
         &PyArray_Type, &win,    // win(yx,t)
         &PyArray_Type, &rin,    // rin(yx,t)
-        &PyArray_Type, &imonth,    // imonth(t)
-        &ffmc00, &dmc00, &dc00, &debug
+//        &PyArray_Type, &imonth,    // imonth(t)
+        &PyArray_Type, &imonth, &ffmc00, &dmc00, &dc00, &debug
         )) return NULL;
+
+    // Construct standard 183-day imonth array if none given.
+    if (imonth == NULL) {
+        static const int imonth_dims[] = {183};
+        static const int imonth_strides[] = {sizeof(int)};
+        static const int imonth_data[] = {
+            4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,      // April
+            5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,    // May
+            6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,      // June
+            7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,    // July
+            8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,    // August
+            9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9};     // September
+        imonth = (PyArrayObject*) PyArray_NewFromDescr(&PyArray_Type, 
+            PyArray_DescrFromType(NPY_INT), 1, imonth_dims, imonth_strides, imonth_data,
+            NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED, NULL);
+    }
+
+
+
+
     const char *input_names[] = {"tin", "hin", "win", "rin"};
     PyArrayObject *inputs0[] = {tin, hin, win, rin};
     const int ninputs = 4;
     char msg[256];
-
 
     if (debug) {
         fprintf(stderr, "module = ");
@@ -514,7 +533,7 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
     }
 
     // Dimensions
-    if (PyArray_DIM(imonth, 0) != ntime) {
+    if ((int)PyArray_DIM(imonth, 0) != (int)ntime) {
         sprintf(msg, "Parameter imonth must have length %d equal to the time dimension of other variables; but has length %d instead.", (int)ntime, (int)PyArray_DIM(imonth,0));
         PyErr_SetString(PyExc_TypeError, msg);
         return NULL;
@@ -625,6 +644,5 @@ PyMODINIT_FUNC PyInit_canadafire(void)
 {
     import_array();    // Needed for Numpy
 
-    PyObject *m;
     return PyModule_Create(&moduledef);
 }
