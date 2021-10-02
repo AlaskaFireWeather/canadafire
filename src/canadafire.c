@@ -454,6 +454,7 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
         )) return NULL;
 
     // Construct standard 183-day imonth array if none given.
+    bool imonth_alloc = false;
     if (imonth == NULL) {
         static npy_intp imonth_dims[] = {183};
         static npy_intp imonth_strides[] = {sizeof(int)};
@@ -467,6 +468,7 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
         imonth = (PyArrayObject*) PyArray_NewFromDescr(&PyArray_Type, 
             PyArray_DescrFromType(NPY_INT), 1, imonth_dims, imonth_strides, imonth_data,
             NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED, NULL);
+        imonth_alloc = true;
     }
 
 
@@ -569,7 +571,7 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
 
     // -------------------------------------------------------------------------    
 
-    // Output arrays
+    // Output arrays (1 spatial dimension)
     PyArrayObject *ffmcout = (PyArrayObject *)PyArray_NewLikeArray(tin, NPY_ANYORDER, NULL, 0);
     PyArrayObject *isiout = (PyArrayObject *) PyArray_NewLikeArray(tin, NPY_ANYORDER, NULL, 0);
     PyArrayObject *fwiout = (PyArrayObject *)PyArray_NewLikeArray(tin, NPY_ANYORDER, NULL, 0);
@@ -639,24 +641,227 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
     }
 
     // ---------------------------------------------------------
-    // Reshape to original rank
-    ffmcout = (PyArrayObject *)PyArray_Newshape(ffmcout, &shape0, NPY_ANYORDER);
+    // Free input arrays we allocated (the version w/ 1 spatial dimension)
+    Py_DECREF(tin);
+    Py_DECREF(hin);
+    Py_DECREF(win);
+    Py_DECREF(rin);
+    if (imonth_alloc) PyDECREF(imonth);
+
+    // ---------------------------------------------------------
+    // Reshape to original rank; and free the 1-spatial-dim version
+    PyArrayObject *_ffmcout = (PyArrayObject *)PyArray_Newshape(ffmcout, &shape0, NPY_ANYORDER);
     if (!ffmcout) return NULL;
-    isiout = (PyArrayObject *)PyArray_Newshape(isiout, &shape0, NPY_ANYORDER);
+    Py_DECREF(ffmcout);
+    PyArrayObject *_isiout = (PyArrayObject *)PyArray_Newshape(isiout, &shape0, NPY_ANYORDER);
     if (!isiout) return NULL;
-    fwiout = (PyArrayObject *)PyArray_Newshape(fwiout, &shape0, NPY_ANYORDER);
+    Py_DECREF(isiout);
+    PyArrayObject *_fwiout = (PyArrayObject *)PyArray_Newshape(fwiout, &shape0, NPY_ANYORDER);
     if (!fwiout) return NULL;
-    dmcout = (PyArrayObject *)PyArray_Newshape(dmcout, &shape0, NPY_ANYORDER);
+    Py_DECREF(fwiout);
+    PyArrayObject *_dmcout = (PyArrayObject *)PyArray_Newshape(dmcout, &shape0, NPY_ANYORDER);
     if (!dmcout) return NULL;
-    buiout = (PyArrayObject *)PyArray_Newshape(buiout, &shape0, NPY_ANYORDER);
+    Py_DECREF(dmcout);
+    PyArrayObject *_buiout = (PyArrayObject *)PyArray_Newshape(buiout, &shape0, NPY_ANYORDER);
     if (!buiout) return NULL;
-    dcout = (PyArrayObject *)PyArray_Newshape(dcout, &shape0, NPY_ANYORDER);
+    Py_DECREF(buiout);
+    PyArrayObject *_dcout = (PyArrayObject *)PyArray_Newshape(dcout, &shape0, NPY_ANYORDER);
     if (!dcout) return NULL;
+    Py_DECREF(dcout);
 
     // Return a tuple of the output arrays we created.
     // https://stackoverflow.com/questions/3498210/returning-a-tuple-of-multipe-objects-in-python-c-api
-    return PyTuple_Pack(6, buiout,ffmcout,isiout,fwiout,dmcout,dcout);
+    PyObject *ret = PyTuple_Pack(6, _buiout,_ffmcout,_isiout,_fwiout,_dmcout,_dcout);
+    return ret;
 }
+// ============================================================
+inline double julian_date(int const Y, int const M, int const D)
+{
+
+    // Integer Julian day number
+    int jdn = (1461 * (Y + 4800 + (M − 14)/12))/4 +(367 * (M − 2 − 12 * ((M − 14)/12)))/12 − (3 * ((Y + 4900 + (M - 14)/12)/100))/4 + D − 32075;
+
+    // The Julian date (JD) of any instant is the Julian day number
+    // plus the fraction of a day since the preceding noon in
+    // Universal Time. Julian dates are expressed as a Julian day
+    // number with a decimal fraction added.
+    return (double)jdn + .5;
+
+}
+
+inline double _sqr(double const x) { return x*x; }
+
+inline double equation_of_time(int const Y, int const M, int const D, double const UT_h)
+/** Compute the Equation of Time, as defined in the paper:
+
+    Mon. Not. R. astr. Soc. (1989) 238,1529-1535
+    The Equation of Time
+    David W. Hughes Department of Physics, University of Sheffield, Sheffield, S3 7RH
+    B.D. Yallop and C.Y. Hohenkerk Royal Greenwich Observatory, Herstmonceux Castle, Hailsham, East Sussex, BN271RP
+
+Y,M,D:
+    Year, month and day to calculate
+UT_h: [0,24)
+    Time of day within the date to calculate (UTC), as fractional hours
+Returns: [0,360)
+    Equation of Time in degrees
+*/
+{
+    // Step A1 (p. 1531)
+    int y,m;
+    if (M>2) {
+        y = Y;
+        m = M-3;
+    } else {
+        y = Y-1;
+        m = M+9;
+    }
+
+    // Step A2-A4 (p. 1531): Julian Date JD
+    double const J = (365.25 *(y + 4712)) + (30.6*m + 0.5) + 59.0 + D - 0.5;
+    double const Gn = 38. - (3.*(49. + .01*y)/4.);
+    double const JD = J + Gn;
+
+    double const t = (JD + UT_h/24. - 451545.0) / 36525.0;
+    double const DeltaT = ((Y >= 1650 && Y < 1900) ? 0.0 : (-3.36 + 1.35*(t + 2.33)*(t+2.33)) * 1.e-8);
+    double const T = t + DeltaT;
+
+    // Step C: Calculate the Greenwich mean sidereal time
+    double const t2 = t*t;
+    double const t3 = t2*t;
+    double const ST_deg = 100.4606 - 36000.77005*t + 0.000388*t2 - 3.e-8 * t3;    // [deg]
+
+    // Step D:
+    // Calculate the right ascension of the apparent Sun using the Dynamical Time interval T
+
+    // D1: Calculate the solar arguments; the geometric mean ecliptic
+    // longitude of date (L ), the mean anomaly (G), the mean
+    // obliquity of the ecliptic (e), and the equation of the centre
+    // (C).
+    double const T2 = T*T;
+    double const T3 = T2*T;
+    double const L_deg = 280.46607 + 36000.76980*T + 0.0003025*T2;    // [deg]
+    double const G_deg = 357.528 + 35999.0503*T;    // [deg]
+    double const G = G_deg * (M_PI / 180.);
+    double const epsilon_deg = 23.4393 - 0.01300*T- 0.0000002*T2 + 0.0000005*T3;
+    double const epsilon = epsilon_deg * (M_PI / 180.);
+    double const C_deg = (1.9146 - 0.00484*T- 0.000014*T2)*sin(G) + (0.01999 - 0.00008*T)*sin(2.*G);
+
+    // D2: Calculate the ecliptic longitude of date (Lc), from the
+    // mean longitude by applying aberration and the correction to
+    // centre.
+    double const Lc_deg = L_deg + C_deg - .0057;
+    double const Lc = Lc_deg * (M_PI / 180.);
+
+    // D3: Calculate the right ascension
+    double const _y = _sqr(tan(.5*epsilon));
+    double const _f = 180. / M_PI;
+    double const alpha_deg = Lc_deg - _y*_f*sin(2.*Lc) + 0.5*_sqr(_y)*_f*sin(4.*Lc);
+
+    // Step E: As stated in equation (3) the Equation of Time, E, in degrees is given by...
+    double E_deg = (ST_deg - alpha_deg) - (15.*UT_h - 180.);
+    // This last line ensures that the discontinuities at 360° are taken into account.
+    if (E_deg > 10) E -= 360.;
+
+    return E_d;
+}
+
+
+inline void solar_noon(int const Y, int const M, int const D, double longitude_deg,
+    double *mean_solar_noon,        // OUT (hours)
+    double *apparent_solar_noon)    // OUT (hours)
+// longitude: [-180,180]
+{
+
+    // Obtain UTC for mean solar noon at this longitude
+    // We will compute the equation of time at this time.
+    double const UT_deg = (720. - 4 * longitude_deg) / 1440.; // [0.0, 1.0]
+    double const UT_h = UT_deg * 24.;    // Time of day (hours)
+
+    // The precise definition of the Equation of Time is
+    // E = GHA (apparent Sun) - GHA (mean Sun)
+    double const E_deg = equation_of_time(Y,M,D, UT_h);
+
+    *mean_solar_noon = UT_h;
+    *apparent_solar_noon = UT_h + E_deg*(24./360.);
+}
+    
+
+// https://numpy.org/devdocs/user/c-info.ufunc-tutorial.html
+static void canadafire_solar_noon(PyObject *module, PyObject *args, PyObject *kwargs)
+{
+    int Y,M,D;
+    PyArrayObject *lons;    // Longitudes over which to operate
+
+
+    // List must include ALL arg names, including positional args
+    static char *kwlist[] = {
+        "Y", "M", "D", "lons",    // *args
+                // **kwargs
+        NULL};
+    // -------------------------------------------------------------------------    
+    /* Parse the Python arguments into Numpy arrays */
+    // p = "predicate" for bool: https://stackoverflow.com/questions/9316179/what-is-the-correct-way-to-pass-a-boolean-to-a-python-c-extension
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiiO!|",
+        kwlist,
+        &Y, &M, &D,
+        &PyArray_Type, &lons,    // lons(...)
+        )) return NULL;
+
+    PyArrayObject *lons1d;
+
+    // Check type
+    if (PyArray_DESCR(lons)->type_num != NPY_DOUBLE) {
+        PyErr_SetString(PyExc_TypeError, "Parameter lons must have type double");
+        return NULL;
+    }
+
+
+    // Save original shape
+    int ndim0 = PyArray_NDIM(lons);
+    npy_intp _dims0[ndim0];
+    for (int j=0; j<ndim0; ++j) _dims0[j] = PyArray_DIM(lons,j);
+    PyArray_Dims shape0 = {_dims0, ndim0};
+
+    // Reshape to rank 1
+    npy_intp nxy = 1;
+    for (int j=0; j<ndim0-1; ++j) nxy *= PyArray_DIM(inputs0[0],j);
+    npy_intp _dims1[] = {nxy};
+    PyArray_Dims shape1 = {_dims1, 1};
+    lons1d = (PyArrayObject *)PyArray_Newshape(lons, &shape1, NPY_KEEPORDER);
+
+    // Output
+    PyArrayObject *msn1d = (PyArrayObject *)PyArray_NewLikeArray(lons, NPY_ANYORDER, NULL, 0);    // mean solar noon
+    PyArrayObject *asn1d = (PyArrayObject *)PyArray_NewLikeArray(lons, NPY_ANYORDER, NULL, 0);    // apparent solar noon (corrected)
+
+
+    // Run the calculation
+    for (int ii=0; ii<nxy; ++ii) {
+        const double lon = *((double *)PyArray_GETPTR1(lons1d,ii));
+
+        // Stores result in msn (mean solar noon) and asn (apparent solar noon).
+        solar_noon(Y,M,D,lon,
+            (double *)PyArray_GETPTR1(msn1d,ii),
+            (double *)PyArray_GETPTR1(asn1d,ii));
+
+    }
+
+    // Free arrays we created
+    Py_DECREF(lons1d);
+
+    // Convert back to original shape (and free 1D array objects)
+    PyArrayObject *msn = (PyArrayObject *)PyArray_Newshape(msn1d, &shape0, NPY_ANYORDER);
+    if (!msn) return NULL;
+    Py_DECREF(msn1d);
+
+    PyArrayObject *asn = (PyArrayObject *)PyArray_Newshape(asn1d, &shape0, NPY_ANYORDER);
+    if (!asn) return NULL;
+    Py_DECREF(asn1d);
+
+}
+
+
+
 // ============================================================
 // Random other Python C Extension Stuff
 static PyMethodDef CanadafireMethods[] = {
