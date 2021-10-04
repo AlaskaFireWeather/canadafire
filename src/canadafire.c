@@ -640,6 +640,14 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
 // ============================================================
 inline double _sqr(double const x) { return x*x; }
 
+// https://stackoverflow.com/questions/11498169/dealing-with-angle-wrap-in-c-code
+inline double constrain_angle(double x){
+    x = fmod(x,360);
+    if (x < 0)
+        x += 360;
+    return x;
+}
+
 inline double equation_of_time(int const Y, int const M, int const D, double const UT_h)
 /** Compute the Equation of Time, as defined in the paper:
 
@@ -667,18 +675,26 @@ Returns: [0,360)
     }
 
     // Step A2-A4 (p. 1531): Julian Date JD
-    double const J = (365.25 *(y + 4712)) + (30.6*m + 0.5) + 59.0 + D - 0.5;
-    double const Gn = 38. - (3.*(49. + .01*y)/4.);
+    int const J_int = (long)(365.25 *(y + 4712)) + (long)(30.6*m + 0.5) + 59 + D;
+    double const J = (double)J_int - 0.5;
+    int const Gn = 38 - (3*((49 + y/100)/4));
     double const JD = J + Gn;
+printf("JD = %f\n", JD);
 
-    double const t = (JD + UT_h/24. - 451545.0) / 36525.0;
-    double const DeltaT = ((Y >= 1650 && Y < 1900) ? 0.0 : (-3.36 + 1.35*(t + 2.33)*(t+2.33)) * 1.e-8);
+    double const t = (JD + UT_h/24. - 2451545.0) / 36525.0;
+    double DeltaT;
+    if (Y >= 1650 && Y < 1900) DeltaT = 0;
+    else DeltaT = 1.e-8 * (long)(-3.36 + 1.35*(t + 2.33)*(t+2.33));
+DeltaT = 0;
     double const T = t + DeltaT;
 
     // Step C: Calculate the Greenwich mean sidereal time
     double const t2 = t*t;
     double const t3 = t2*t;
-    double const ST_deg = 100.4606 - 36000.77005*t + 0.000388*t2 - 3.e-8 * t3;    // [deg]
+    double const ST_deg = constrain_angle(100.4606 - 36000.77005*t + 0.000388*t2 - 3.e-8 * t3);    // [deg]
+printf("T = %g\n", T);
+printf("ST_deg %g\n", ST_deg);
+printf("ST (minutes) %g\n", (ST_deg/15.)*60.);
 
     // Step D:
     // Calculate the right ascension of the apparent Sun using the Dynamical Time interval T
@@ -689,12 +705,12 @@ Returns: [0,360)
     // (C).
     double const T2 = T*T;
     double const T3 = T2*T;
-    double const L_deg = 280.46607 + 36000.76980*T + 0.0003025*T2;    // [deg]
-    double const G_deg = 357.528 + 35999.0503*T;    // [deg]
+    double const L_deg = constrain_angle(280.46607 + 36000.76980*T + 0.0003025*T2);    // [deg]
+    double const G_deg = constrain_angle(357.528 + 35999.0503*T);    // [deg]
     double const G = G_deg * (M_PI / 180.);
-    double const epsilon_deg = 23.4393 - 0.01300*T- 0.0000002*T2 + 0.0000005*T3;
+    double const epsilon_deg = constrain_angle(23.4393 - 0.01300*T- 0.0000002*T2 + 0.0000005*T3);
     double const epsilon = epsilon_deg * (M_PI / 180.);
-    double const C_deg = (1.9146 - 0.00484*T- 0.000014*T2)*sin(G) + (0.01999 - 0.00008*T)*sin(2.*G);
+    double const C_deg = constrain_angle((1.9146 - 0.00484*T- 0.000014*T2)*sin(G) + (0.01999 - 0.00008*T)*sin(2.*G));
 
     // D2: Calculate the ecliptic longitude of date (Lc), from the
     // mean longitude by applying aberration and the correction to
@@ -705,10 +721,10 @@ Returns: [0,360)
     // D3: Calculate the right ascension
     double const _y = _sqr(tan(.5*epsilon));
     double const _f = 180. / M_PI;
-    double const alpha_deg = Lc_deg - _y*_f*sin(2.*Lc) + 0.5*_sqr(_y)*_f*sin(4.*Lc);
+    double const alpha_deg = Lc_deg - _y*_f*sin(2.*Lc) + 0.5*_y*_y*_f*sin(4.*Lc);
 
     // Step E: As stated in equation (3) the Equation of Time, E, in degrees is given by...
-    double E_deg = (ST_deg - alpha_deg) - (15.*UT_h - 180.);
+    double E_deg = constrain_angle((ST_deg - alpha_deg) - (15.*UT_h - 180.));
     // This last line ensures that the discontinuities at 360° are taken into account.
     if (E_deg > 10) E_deg -= 360.;
 
@@ -721,21 +737,19 @@ inline void solar_noon(int const Y, int const M, int const D, double longitude_d
     double *apparent_solar_noon)    // OUT (hours)
 // longitude: [-180,180]
 {
-printf("BB1\n");
     // Obtain UTC for mean solar noon at this longitude
     // We will compute the equation of time at this time.
     double const UT_deg = (720. - 4 * longitude_deg) / 1440.; // [0.0, 1.0]
     double const UT_h = UT_deg * 24.;    // Time of day (hours)
-printf("BB2\n");
 
     // The precise definition of the Equation of Time is
     // E = GHA (apparent Sun) - GHA (mean Sun)
     double const E_deg = equation_of_time(Y,M,D, UT_h);
-printf("BB3\n");
+    printf("E_deg = %f\n", E_deg);
+
 
     *mean_solar_noon = UT_h;
     *apparent_solar_noon = UT_h + E_deg*(24./360.);
-printf("BB4\n");
 
 }
     
@@ -766,7 +780,6 @@ static PyObject *canadafire_solar_noon(PyObject *module, PyObject *args, PyObjec
         "Y", "M", "D", "lons",    // *args
                 // **kwargs
         NULL};
-printf("AA1\n");
     // -------------------------------------------------------------------------    
     /* Parse the Python arguments into Numpy arrays */
     // p = "predicate" for bool: https://stackoverflow.com/questions/9316179/what-is-the-correct-way-to-pass-a-boolean-to-a-python-c-extension
@@ -782,7 +795,6 @@ printf("AA1\n");
         PyErr_SetString(PyExc_TypeError, "Parameter lons must have type double");
         return NULL;
     }
-printf("AA2\n");
 
     // ------- Allocate output arrays
     // Mean solar noon
@@ -791,7 +803,6 @@ printf("AA2\n");
     // Apparent solar noon
     PyArrayObject *asn = (PyArrayObject *)PyArray_NewLikeArray(lons, NPY_ANYORDER, NULL, 0);
     if (asn == NULL) return NULL;
-printf("AA3\n");
 
 
     // Run the calculation
@@ -811,7 +822,6 @@ printf("AA3\n");
     if (asni == NULL) return NULL;
     while (loni->index < loni->size) {
         const double lon = *((double *) PyArray_ITER_DATA(loni));
-printf("   %p %p %p\n", PyArray_ITER_DATA(loni), PyArray_ITER_DATA(msni), PyArray_ITER_DATA(asni));
 
         // Stores result in msn (mean solar noon) and asn (apparent solar noon).
         solar_noon(Y,M,D,lon,
@@ -819,15 +829,13 @@ printf("   %p %p %p\n", PyArray_ITER_DATA(loni), PyArray_ITER_DATA(msni), PyArra
             (double *) PyArray_ITER_DATA(asni));
 
         PyArray_ITER_NEXT(loni);
-        PyArray_ITER_NEXT(msn);
-        PyArray_ITER_NEXT(asn);
+        PyArray_ITER_NEXT(msni);
+        PyArray_ITER_NEXT(asni);
     }
-printf("AA4\n");
 
     Py_DECREF(asni);
     Py_DECREF(msni);
     Py_DECREF(loni);
-printf("AA5\n");
 
     return PyTuple_Pack(2, msn, asn);
 }
