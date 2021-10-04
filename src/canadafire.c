@@ -721,18 +721,22 @@ inline void solar_noon(int const Y, int const M, int const D, double longitude_d
     double *apparent_solar_noon)    // OUT (hours)
 // longitude: [-180,180]
 {
-
+printf("BB1\n");
     // Obtain UTC for mean solar noon at this longitude
     // We will compute the equation of time at this time.
     double const UT_deg = (720. - 4 * longitude_deg) / 1440.; // [0.0, 1.0]
     double const UT_h = UT_deg * 24.;    // Time of day (hours)
+printf("BB2\n");
 
     // The precise definition of the Equation of Time is
     // E = GHA (apparent Sun) - GHA (mean Sun)
     double const E_deg = equation_of_time(Y,M,D, UT_h);
+printf("BB3\n");
 
     *mean_solar_noon = UT_h;
     *apparent_solar_noon = UT_h + E_deg*(24./360.);
+printf("BB4\n");
+
 }
     
 
