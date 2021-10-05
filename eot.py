@@ -1,8 +1,8 @@
 import numpy as np
 import canadafire
 
-lons = np.array([-147.7164])
-#lons = np.array([0.])
+#lons = np.array([-147.7164])
+lons = np.array([0., -147.7164])
 
 dates = [
     (2019,1,1),
@@ -23,4 +23,8 @@ for Y in range(2019,2020):
 #            print('{}-{}-{}: {} {}'.format(Y,M,D,msn,asn-msn))
 
 for Y,M,D,lons,msn,asn in vals:
-    print('{}-{}-{}: {} {}'.format(Y,M,D,msn,asn))
+    diff_h = asn-msn
+    diff_s = 3600*diff_h
+    min = diff_s // 60
+    sec = diff_s - min*60
+    print('{}-{}-{}: {} {} {}:{}'.format(Y,M,D,msn,asn,min,sec))

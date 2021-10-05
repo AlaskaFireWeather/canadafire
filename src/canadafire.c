@@ -645,7 +645,7 @@ inline double constrain_angle(double x){
     return y;
 }
 
-inline double equation_of_time(int const Y, int const M, int const D, double const UT_h)
+inline double equation_of_time0(int const Y, int const M, int const D, double const UT_h)
 /** Compute the Equation of Time, as defined in the paper:
 
     Mon. Not. R. astr. Soc. (1989) 238,1529-1535
@@ -676,9 +676,8 @@ Returns: [0,360)
     double const J = (double)J_int - 0.5;
     int const Gn = 38 - (3*((49 + y/100)/4));
     double const JD = J + Gn;
-printf("JD = %f\n", JD);
 
-    double const t = (JD + UT_h/24. - 2451545.0) / 36525.0;
+    double const t = (JD - 2451545.0) / 36525.0;    // T_u
     double DeltaT;
     if (Y >= 1650 && Y < 1900) DeltaT = 0;
     else DeltaT = 1.e-8 * (long)(-3.36 + 1.35*sqr(t + 2.33));
@@ -701,7 +700,11 @@ printf("DeltaT = %g %gy %gh %gm\n", DeltaT, DeltaT*100., DeltaT*(100.*365*24.), 
     //    Joint Institutefor Advancement of Flight Sciences
     //    The George Washington University
     //    Langley Research Center, Hampton, Virginia
-    double const ST_deg = 100.4606184 + 36000.77005*t + 0.00038793*t2 - 2.6e-7 * t3;    // [deg]
+    // See also:
+    //     JOURNAL OF GEOPHYSICAL RESEARCH, VOL. 102,NO. B9,PAGES 20,469-20,477,SEPTEMBER 10,1997
+    double const r = 1.002737909350795 + 5.9006e-11*t - 5.9e-15*t2;
+
+    double const ST_deg = 15*r*UT_h + 100.4606184 + 36000.77005*t + 0.00038793*t2 - 2.6e-7 * t3;    // [deg]
 printf("t = %1.12e\n", t);
 printf("T = %1.12e\n", T);
 printf("ST_deg %g\n", ST_deg);
@@ -740,6 +743,53 @@ printf("ST (hours) %g %g\n", ST_deg/15., constrain_angle(ST_deg)/15.);
     return E_deg;
 }
 
+inline bool is_leap_year(int year)
+{
+    return (year % 4) == 0 && ((year % 100) != 0 || (year % 400) == 0);
+}
+
+/* https://susdesign.com/popups/sunangle/eot.php
+
+For example, the EOT adjustment in mid-February is about -14
+minutes. So when converting clock time to local solar time, you'd
+subtract 14 minutes. When converting from local solar time to clock
+time, you'd add 14 minutes.
+
+The EOT can be approximated by the following formula:
+
+Note: The SunAngle program currently uses a more sophisticated
+algorithm for EOT calculations, but the above formula is a decent
+approximation and much simpler. Note also that the EOT output is in
+hours, so please multiply by 60 if you'd like to obtain results in
+minutes.
+
+This is accurate to about 1-2 minutes of time.  One can compare its results against:
+     https://gml.noaa.gov/grad/solcalc/
+*/
+inline double equation_of_time(int const Y, int const M, int const D, double const UT_h)
+{
+
+    // Compute day of year
+    // https://stackoverflow.com/questions/19110675/calculating-day-of-year-from-date/19110801
+    struct tm date = {};
+    date.tm_year = Y - 1900;
+    date.tm_mon = M - 1;
+    date.tm_mday = D;
+    mktime( &date );
+    int const doy = date.tm_yday;
+
+    // Adjust doy for time of day
+    double const N = (double)doy + (double)UT_h / 24.;
+
+    // Simple / Uncorrected Equation of Time
+    // https://susdesign.com/popups/sunangle/eot.ph
+    double const B = 2.*M_PI * (N - 81.) / (is_leap_year(Y) ? 366. : 365.);    // [Radians]
+    double const E = (9.87 * sin(2.*B) - 7.53*cos(B) - 1.5*sin(B)) / 60.;    // [hours]
+
+    return E;
+}
+
+
 
 inline void solar_noon(int const Y, int const M, int const D, double longitude_deg,
     double *mean_solar_noon,        // OUT (hours)
@@ -749,17 +799,17 @@ inline void solar_noon(int const Y, int const M, int const D, double longitude_d
     // Obtain UTC for mean solar noon at this longitude
     // We will compute the equation of time at this time.
     double const UT = (720. - 4 * longitude_deg) / 1440.; // [0.0, 1.0]
-//    double const UT_h = UT * 24.;    // Time of day (hours)
-double const UT_h = 12.;
+    double const UT_h = UT * 24.;    // Time of day (hours)
+//double const UT_h = 12.;
 
     // The precise definition of the Equation of Time is
     // E = GHA (apparent Sun) - GHA (mean Sun)
-    double const E_deg = equation_of_time(Y,M,D, UT_h);
-    printf("E_deg = %f\n", E_deg);
+    double const E_h = equation_of_time(Y,M,D, UT_h);
+//    printf("E_h = %f\n", E_h);
 
 
     *mean_solar_noon = UT_h;
-    *apparent_solar_noon = UT_h + E_deg*(24./360.);
+    *apparent_solar_noon = UT_h - E_h;
 
 }
     
