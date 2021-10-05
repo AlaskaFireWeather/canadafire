@@ -638,14 +638,11 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
     return ret;
 }
 // ============================================================
-inline double _sqr(double const x) { return x*x; }
-
 // https://stackoverflow.com/questions/11498169/dealing-with-angle-wrap-in-c-code
 inline double constrain_angle(double x){
-    x = fmod(x,360);
-    if (x < 0)
-        x += 360;
-    return x;
+    double y = fmod(x,360.);
+    if (y < 0) return y + 360.;
+    return y;
 }
 
 inline double equation_of_time(int const Y, int const M, int const D, double const UT_h)
@@ -684,17 +681,31 @@ printf("JD = %f\n", JD);
     double const t = (JD + UT_h/24. - 2451545.0) / 36525.0;
     double DeltaT;
     if (Y >= 1650 && Y < 1900) DeltaT = 0;
-    else DeltaT = 1.e-8 * (long)(-3.36 + 1.35*(t + 2.33)*(t+2.33));
-DeltaT = 0;
+    else DeltaT = 1.e-8 * (long)(-3.36 + 1.35*sqr(t + 2.33));
+printf("DeltaT = %g %gy %gh %gm\n", DeltaT, DeltaT*100., DeltaT*(100.*365*24.), DeltaT*(100.*365*24.*60.));
+//DeltaT = 0;
     double const T = t + DeltaT;
+    double const T2 = T*T;
+    double const T3 = T2*T;
 
     // Step C: Calculate the Greenwich mean sidereal time
     double const t2 = t*t;
     double const t3 = t2*t;
-    double const ST_deg = constrain_angle(100.4606 - 36000.77005*t + 0.000388*t2 - 3.e-8 * t3);    // [deg]
-printf("T = %g\n", T);
+
+    // Note: the paper has a sign wrong on this formula
+    // For correction, see p. 55 of:
+    // https://ntrs.nasa.gov/api/citations/20030032268/downloads/20030032268.pdf
+    //    NASA/CR-2003-2 1 1937
+    //    Preliminary Design and Analysis of the GIFTS Instrument Pointing System
+    //    Paul P. Zomkowski
+    //    Joint Institutefor Advancement of Flight Sciences
+    //    The George Washington University
+    //    Langley Research Center, Hampton, Virginia
+    double const ST_deg = 100.4606184 + 36000.77005*t + 0.00038793*t2 - 2.6e-7 * t3;    // [deg]
+printf("t = %1.12e\n", t);
+printf("T = %1.12e\n", T);
 printf("ST_deg %g\n", ST_deg);
-printf("ST (minutes) %g\n", (ST_deg/15.)*60.);
+printf("ST (hours) %g %g\n", ST_deg/15., constrain_angle(ST_deg)/15.);
 
     // Step D:
     // Calculate the right ascension of the apparent Sun using the Dynamical Time interval T
@@ -703,8 +714,6 @@ printf("ST (minutes) %g\n", (ST_deg/15.)*60.);
     // longitude of date (L ), the mean anomaly (G), the mean
     // obliquity of the ecliptic (e), and the equation of the centre
     // (C).
-    double const T2 = T*T;
-    double const T3 = T2*T;
     double const L_deg = constrain_angle(280.46607 + 36000.76980*T + 0.0003025*T2);    // [deg]
     double const G_deg = constrain_angle(357.528 + 35999.0503*T);    // [deg]
     double const G = G_deg * (M_PI / 180.);
@@ -719,7 +728,7 @@ printf("ST (minutes) %g\n", (ST_deg/15.)*60.);
     double const Lc = Lc_deg * (M_PI / 180.);
 
     // D3: Calculate the right ascension
-    double const _y = _sqr(tan(.5*epsilon));
+    double const _y = sqr(tan(.5*epsilon));
     double const _f = 180. / M_PI;
     double const alpha_deg = Lc_deg - _y*_f*sin(2.*Lc) + 0.5*_y*_y*_f*sin(4.*Lc);
 
@@ -739,8 +748,9 @@ inline void solar_noon(int const Y, int const M, int const D, double longitude_d
 {
     // Obtain UTC for mean solar noon at this longitude
     // We will compute the equation of time at this time.
-    double const UT_deg = (720. - 4 * longitude_deg) / 1440.; // [0.0, 1.0]
-    double const UT_h = UT_deg * 24.;    // Time of day (hours)
+    double const UT = (720. - 4 * longitude_deg) / 1440.; // [0.0, 1.0]
+//    double const UT_h = UT * 24.;    // Time of day (hours)
+double const UT_h = 12.;
 
     // The precise definition of the Equation of Time is
     // E = GHA (apparent Sun) - GHA (mean Sun)
