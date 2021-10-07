@@ -639,11 +639,13 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
 }
 // ============================================================
 // https://stackoverflow.com/questions/11498169/dealing-with-angle-wrap-in-c-code
-inline double constrain_angle(double x){
-    double y = fmod(x,360.);
-    if (y < 0) return y + 360.;
+inline double constrain_range(double const x, double const range){
+    double y = fmod(x,range);
+    if (y < 0) return y + range;
     return y;
 }
+
+inline double constrain_angle(double const x) { return constrain_range(x,360.); }
 
 inline double equation_of_time0(int const Y, int const M, int const D, double const UT_h)
 /** Compute the Equation of Time, as defined in the paper:
@@ -756,6 +758,13 @@ subtract 14 minutes. When converting from local solar time to clock
 time, you'd add 14 minutes.
 
 The EOT can be approximated by the following formula:
+   E = 9.87 * sin (2B) - 7.53 * cos (B) - 1.5 * sin (B)
+
+Where:
+   B = 360 * (N - 81) / 365
+
+Where:
+   N = day number, January 1 = day 1
 
 Note: The SunAngle program currently uses a more sophisticated
 algorithm for EOT calculations, but the above formula is a decent
@@ -766,17 +775,8 @@ minutes.
 This is accurate to about 1-2 minutes of time.  One can compare its results against:
      https://gml.noaa.gov/grad/solcalc/
 */
-inline double equation_of_time(int const Y, int const M, int const D, double const UT_h)
+inline double equation_of_time(int const Y, int const doy, double const UT_h)
 {
-
-    // Compute day of year
-    // https://stackoverflow.com/questions/19110675/calculating-day-of-year-from-date/19110801
-    struct tm date = {};
-    date.tm_year = Y - 1900;
-    date.tm_mon = M - 1;
-    date.tm_mday = D;
-    mktime( &date );
-    int const doy = date.tm_yday;
 
     // Adjust doy for time of day
     double const N = (double)doy + (double)UT_h / 24.;
@@ -791,7 +791,7 @@ inline double equation_of_time(int const Y, int const M, int const D, double con
 
 
 
-inline void solar_noon(int const Y, int const M, int const D, double longitude_deg,
+inline void solar_noon(int const Y, int const doy, double longitude_deg,
     double *mean_solar_noon,        // OUT (hours)
     double *apparent_solar_noon)    // OUT (hours)
 // longitude: [-180,180]
@@ -799,17 +799,19 @@ inline void solar_noon(int const Y, int const M, int const D, double longitude_d
     // Obtain UTC for mean solar noon at this longitude
     // We will compute the equation of time at this time.
     double const UT = (720. - 4 * longitude_deg) / 1440.; // [0.0, 1.0]
-    double const UT_h = UT * 24.;    // Time of day (hours)
+    double const UT_norm = (UT >=0 ? UT : UT + 1);
+    double const UT_h = UT_norm * 24.;    // Time of day (hours)
 //double const UT_h = 12.;
 
     // The precise definition of the Equation of Time is
     // E = GHA (apparent Sun) - GHA (mean Sun)
-    double const E_h = equation_of_time(Y,M,D, UT_h);
+    double const E_h = equation_of_time(Y,doy, UT_h);
 //    printf("E_h = %f\n", E_h);
 
 
     *mean_solar_noon = UT_h;
-    *apparent_solar_noon = UT_h - E_h;
+    *apparent_solar_noon = constrain_range(UT_h - E_h, 24.0);
+    
 
 }
     
@@ -832,21 +834,23 @@ Usage:\n\
 static PyObject *canadafire_solar_noon(PyObject *module, PyObject *args, PyObject *kwargs)
 {
     int Y,M,D;
+    int doy=-1;
     PyArrayObject *lons;    // Longitudes over which to operate
 
 
     // List must include ALL arg names, including positional args
     static char *kwlist[] = {
         "Y", "M", "D", "lons",    // *args
-                // **kwargs
+        "doy",        // **kwargs
         NULL};
     // -------------------------------------------------------------------------    
     /* Parse the Python arguments into Numpy arrays */
     // p = "predicate" for bool: https://stackoverflow.com/questions/9316179/what-is-the-correct-way-to-pass-a-boolean-to-a-python-c-extension
-    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiiO!|",
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiiO!|i",
         kwlist,
         &Y, &M, &D,
-        &PyArray_Type, &lons    // lons(...)
+        &PyArray_Type, &lons,    // lons(...)
+        &doy
         )) return NULL;
 
 
@@ -855,6 +859,18 @@ static PyObject *canadafire_solar_noon(PyObject *module, PyObject *args, PyObjec
         PyErr_SetString(PyExc_TypeError, "Parameter lons must have type double");
         return NULL;
     }
+
+    // Use doy if it is supplied; otherwise get doy from Y/M/D
+    // https://stackoverflow.com/questions/19110675/calculating-day-of-year-from-date/19110801
+    if (doy < 0) {
+        struct tm date = {};
+        date.tm_year = Y - 1900;
+        date.tm_mon = M - 1;
+        date.tm_mday = D;
+        mktime( &date );
+        doy = date.tm_yday + 1;
+    }
+
 
     // ------- Allocate output arrays
     // Mean solar noon
@@ -884,7 +900,7 @@ static PyObject *canadafire_solar_noon(PyObject *module, PyObject *args, PyObjec
         const double lon = *((double *) PyArray_ITER_DATA(loni));
 
         // Stores result in msn (mean solar noon) and asn (apparent solar noon).
-        solar_noon(Y,M,D,lon,
+        solar_noon(Y,doy,lon,
             (double *) PyArray_ITER_DATA(msni),
             (double *) PyArray_ITER_DATA(asni));
 

@@ -15,6 +15,8 @@ dates = [
 #]
 
 vals = list()
+msn,asn = canadafire.solar_noon(2019,-1,-1,lons,doy=1)    # should be same as jan 1
+vals.append((2019,1,1,lons,msn,asn))
 for Y in range(2019,2020):
     for D in range(1,2):
         for M in range(1,13):
