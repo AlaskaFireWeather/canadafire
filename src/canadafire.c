@@ -31,6 +31,7 @@ static inline double ipow8(double base)
     return base8;
 }
 
+#if 0
 /** Computes exponentiation using repeated squares: base^exp */
 static inline double ipow(double base, int exp)
 {
@@ -44,6 +45,7 @@ static inline double ipow(double base, int exp)
 
     return result;
 }
+#endif
 
 /** Checks that arr has same rank and dimensions as arr0 */
 bool check_rank_dims(char const *name0, PyArrayObject *arr0, char const *name, PyArrayObject *arr)
@@ -431,31 +433,35 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
     double ffmc00 = 85.5;    // Initial fine fuel moisture code (FMC)
     double dmc00 = 6.0;      // Initial duff moister code (DMC)
     double dc00 = 15.0;      // Initial drought code (DC)
+    PyArrayObject *mask = NULL;
+    double fill_value = -1.e10;    // Value for masked-out gridcells
 
     // List must include ALL arg names, including positional args
     static char *kwlist[] = {
         "tin", "hin", "win", "rin",    // *args
         "imonth", "ffmc0", "dmc0", "dc0", "debug",         // **kwargs
+        "mask", "fill_value",
         NULL};
     // -------------------------------------------------------------------------    
     /* Parse the Python arguments into Numpy arrays */
     // p = "predicate" for bool: https://stackoverflow.com/questions/9316179/what-is-the-correct-way-to-pass-a-boolean-to-a-python-c-extension
-    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O!O!O!O!|O!dddp",
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O!O!O!O!|O!dddpO!d",
         kwlist,
         &PyArray_Type, &tin,    // tin(yx,t)
         &PyArray_Type, &hin,    // hin(yx,t)
         &PyArray_Type, &win,    // win(yx,t)
         &PyArray_Type, &rin,    // rin(yx,t)
 //        &PyArray_Type, &imonth,    // imonth(t)
-        &PyArray_Type, &imonth, &ffmc00, &dmc00, &dc00, &debug
+        &PyArray_Type, &imonth, &ffmc00, &dmc00, &dc00, &debug,
+        &PyArray_Type, &mask, &fill_value
         )) return NULL;
 
     // Construct standard 183-day imonth array if none given.
     bool imonth_alloc = false;
     if (imonth == NULL) {
-        static const npy_intp imonth_dims[] = {183};
-        static const npy_intp imonth_strides[] = {sizeof(int)};
-        static const npy_intp imonth_data[] = {
+        static npy_intp imonth_dims[] = {183};
+        static npy_intp imonth_strides[] = {sizeof(int)};
+        static int imonth_data[] = {
             4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,      // April
             5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,    // May
             6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,      // June
@@ -463,7 +469,7 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
             8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,    // August
             9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9};     // September
         imonth = (PyArrayObject*) PyArray_NewFromDescr(&PyArray_Type, 
-            PyArray_DescrFromType(NPY_INT), 1, imonth_dims, imonth_strides, (void *)imonth_data,
+            PyArray_DescrFromType(NPY_INT), 1, imonth_dims, imonth_strides, imonth_data,
             NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED, NULL);
         imonth_alloc = true;
     }
@@ -509,6 +515,7 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
         for (int j=0; j<ndim0-1; ++j) nxy *= PyArray_DIM(inputs0[0],j);
         npy_intp _dims1[] = {nxy, ntime};
         PyArray_Dims shape1 = {_dims1, 2};
+        PyArray_Dims shape1b = {_dims1, 1};
 
         // This will copy arrays if not already in C order.
         // That would be a good thing, since it would make time the lowest-stride dimension.
@@ -520,6 +527,11 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
         if (!win) return NULL;
         rin = (PyArrayObject *)PyArray_Newshape(rin, &shape1, NPY_CORDER);
         if (!rin) return NULL;
+
+        if (mask != NULL) {
+            mask = (PyArrayObject *)PyArray_Newshape(mask, &shape1b, NPY_CORDER);
+            if (!mask) return NULL;
+        }
     }
 
     // -------------------------------------------------
@@ -543,6 +555,22 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
         PyErr_SetString(PyExc_TypeError, msg);
         return NULL;
     }
+
+    if (mask != NULL) {
+        if (PyArray_DESCR(mask)->type_num != NPY_INT) {
+            PyErr_SetString(PyExc_TypeError, "Parameter mask must have type int");
+            return NULL;
+        }
+        if (PyArray_NDIM(mask) != 1) {
+            PyErr_SetString(PyExc_TypeError,
+                "Parameter mask must have just spatial dimension(s), no time");
+            return NULL;
+        }
+        if (PyArray_DIM(mask,0) != nxy) {
+            sprintf(msg, "Parameter mask must have total size %d equal to other variables; but it has %d instead.", (int)nxy, (int)PyArray_DIM(mask,0));
+        }
+    }
+
 
     // -------------------------------------------------------------------------    
 
@@ -578,13 +606,25 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
             const double w = *((double *)PyArray_GETPTR2(win,ii,ti));
             const double r = *((double *)PyArray_GETPTR2(rin,ii,ti));
             const int im =  *((int *)PyArray_GETPTR1(imonth,ti));
+            // If no mask, compute for all pixels
+            const char msk = (mask == NULL ? 1 :
+                *((char *)PyArray_GETPTR1(mask,ii)));
 
             // Run the core computation on a single gridpoint.
             double bui, ffm, isi, fwi, dsr, dmc, dc;   // Output vars
-            canadafire(
-                t, h, w, r, im,
-                ffmc0, dmc0, dc0,    // Running values from one day to the next
-                &bui, &ffm, &isi, &fwi, &dsr, &dmc, &dc);
+            if (msk) {
+                canadafire(
+                    t, h, w, r, im,
+                    ffmc0, dmc0, dc0,    // Running values from one day to the next
+                    &bui, &ffm, &isi, &fwi, &dsr, &dmc, &dc);
+            } else {
+                bui = fill_value;
+                ffm = fill_value;
+                isi = fill_value;
+                fwi = fill_value;
+                dmc = fill_value;
+                dc = fill_value;
+            }
 
             // housekeeping items
             // set todays values to the yesterdays values before going on
@@ -853,7 +893,6 @@ static PyObject *canadafire_solar_noon(PyObject *module, PyObject *args, PyObjec
         &doy
         )) return NULL;
 
-
     // Check type
     if (PyArray_DESCR(lons)->type_num != NPY_DOUBLE) {
         PyErr_SetString(PyExc_TypeError, "Parameter lons must have type double");
@@ -913,7 +952,7 @@ static PyObject *canadafire_solar_noon(PyObject *module, PyObject *args, PyObjec
     Py_DECREF(msni);
     Py_DECREF(loni);
 
-    return PyTuple_Pack(2, msn, asn);
+    return NULL;
 }
 
 
