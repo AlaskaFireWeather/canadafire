@@ -679,15 +679,15 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
 }
 // ============================================================
 // https://stackoverflow.com/questions/11498169/dealing-with-angle-wrap-in-c-code
-inline double constrain_range(double const x, double const range){
+static inline double constrain_range(double const x, double const range){
     double y = fmod(x,range);
     if (y < 0) return y + range;
     return y;
 }
 
-inline double constrain_angle(double const x) { return constrain_range(x,360.); }
+static inline double constrain_angle(double const x) { return constrain_range(x,360.); }
 
-inline double equation_of_time0(int const Y, int const M, int const D, double const UT_h)
+static inline double equation_of_time0(int const Y, int const M, int const D, double const UT_h)
 /** Compute the Equation of Time, as defined in the paper:
 
     Mon. Not. R. astr. Soc. (1989) 238,1529-1535
@@ -831,7 +831,7 @@ inline double equation_of_time(int const Y, int const doy, double const UT_h)
 
 
 
-inline void solar_noon(int const Y, int const doy, double longitude_deg,
+static inline void solar_noon(int const Y, int const doy, double longitude_deg,
     double *mean_solar_noon,        // OUT (hours)
     double *apparent_solar_noon)    // OUT (hours)
 // longitude: [-180,180]
