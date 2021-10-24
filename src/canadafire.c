@@ -52,6 +52,13 @@ bool check_rank_dims(char const *name0, PyArrayObject *arr0, char const *name, P
 {
     char msg[256];
 
+    // Check type
+    if (PyArray_DESCR(arr)->type_num != NPY_DOUBLE) {
+        PyErr_SetString(PyExc_TypeError, "Input parameters for canadafire must have type double");
+        return NULL;
+    }
+
+
     // Check rank
     if (PyArray_NDIM(arr) != PyArray_NDIM(arr0)) {
         sprintf(msg, "Parameter %s must have same rank as %s", name, name0);

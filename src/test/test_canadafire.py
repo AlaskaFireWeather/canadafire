@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import canadafire
+import pytest
 
 """Unit test for canadafire C module.  To run test:
      pytest test_canadafire.py
@@ -72,3 +73,9 @@ def test_canadafire():
     assert 0 == compare('fwi', fwi0, fwi1, 1.e-3)
     assert 0 == compare('dmc', dmc0, dmc1, 1.e-3)
     assert 0 == compare('dc', dc0, dc1, 1.e-3)
+
+
+    # ----------------------------------------
+    # Test the typechecking
+    with pytest.raises(TypeError):
+        bui1,ffmc1,isi1,fwi1,dmc1,dc1 = canadafire.canadafire(tin.astype('f'),hin,win,rin)
