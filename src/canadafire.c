@@ -145,7 +145,7 @@ double *_bui, double *_ffm, double *_isi, double *_fwi, double *_dsr, double *_d
         if(mo < ew) {
             // EQ 7a
             double const kl =
-                0.424 * (1.- pow((100.-h)/100, 1.7))
+                0.424 * (1.- pow((100.-h)/100., 1.7))
                 + (0.0694 * sqrt(w)) * (1. - ipow8((100.-h)/100.));
 
             // EQ 7b
@@ -323,6 +323,9 @@ double *_bui, double *_ffm, double *_isi, double *_fwi, double *_dsr, double *_d
     *_dmc = dmc;
     *_dc = dc;
 
+    // DEBUGGING:
+    // printf("%f %f %f %f | %f %f %f %f %f %f %f %f\n", t,h,w,r,  u,m,ffm,isi,fwi,dsr,dmc,dc);
+
 }
 
 // ===================================================================
@@ -433,14 +436,14 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
     double ffmc00 = 85.5;    // Initial fine fuel moisture code (FMC)
     double dmc00 = 6.0;      // Initial duff moister code (DMC)
     double dc00 = 15.0;      // Initial drought code (DC)
-    PyArrayObject *mask = NULL;
+    PyArrayObject *mask_out = NULL;
     double fill_value = -1.e10;    // Value for masked-out gridcells
 
     // List must include ALL arg names, including positional args
     static char *kwlist[] = {
         "tin", "hin", "win", "rin",    // *args
         "imonth", "ffmc0", "dmc0", "dc0", "debug",         // **kwargs
-        "mask", "fill_value",
+        "mask_out", "fill_value",
         NULL};
     // -------------------------------------------------------------------------    
     /* Parse the Python arguments into Numpy arrays */
@@ -453,7 +456,7 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
         &PyArray_Type, &rin,    // rin(yx,t)
 //        &PyArray_Type, &imonth,    // imonth(t)
         &PyArray_Type, &imonth, &ffmc00, &dmc00, &dc00, &debug,
-        &PyArray_Type, &mask, &fill_value
+        &PyArray_Type, &mask_out, &fill_value
         )) return NULL;
 
     // Construct standard 183-day imonth array if none given.
@@ -528,9 +531,9 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
         rin = (PyArrayObject *)PyArray_Newshape(rin, &shape1, NPY_CORDER);
         if (!rin) return NULL;
 
-        if (mask != NULL) {
-            mask = (PyArrayObject *)PyArray_Newshape(mask, &shape1b, NPY_CORDER);
-            if (!mask) return NULL;
+        if (mask_out != NULL) {
+            mask_out = (PyArrayObject *)PyArray_Newshape(mask_out, &shape1b, NPY_CORDER);
+            if (!mask_out) return NULL;
         }
     }
 
@@ -556,18 +559,18 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
         return NULL;
     }
 
-    if (mask != NULL) {
-        if (PyArray_DESCR(mask)->type_num != NPY_INT) {
-            PyErr_SetString(PyExc_TypeError, "Parameter mask must have type int");
+    if (mask_out != NULL) {
+        if (PyArray_DESCR(mask_out)->type_num != NPY_BOOL) {
+            PyErr_SetString(PyExc_TypeError, "Parameter mask_out must have type bool");
             return NULL;
         }
-        if (PyArray_NDIM(mask) != 1) {
+        if (PyArray_NDIM(mask_out) != 1) {
             PyErr_SetString(PyExc_TypeError,
-                "Parameter mask must have just spatial dimension(s), no time");
+                "Parameter mask_out must have just spatial dimension(s), no time");
             return NULL;
         }
-        if (PyArray_DIM(mask,0) != nxy) {
-            sprintf(msg, "Parameter mask must have total size %d equal to other variables; but it has %d instead.", (int)nxy, (int)PyArray_DIM(mask,0));
+        if (PyArray_DIM(mask_out,0) != nxy) {
+            sprintf(msg, "Parameter mask_out must have total size %d equal to other variables; but it has %d instead.", (int)nxy, (int)PyArray_DIM(mask_out,0));
         }
     }
 
@@ -606,24 +609,27 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
             const double w = *((double *)PyArray_GETPTR2(win,ii,ti));
             const double r = *((double *)PyArray_GETPTR2(rin,ii,ti));
             const int im =  *((int *)PyArray_GETPTR1(imonth,ti));
-            // If no mask, compute for all pixels
-            const char msk = (mask == NULL ? 1 :
-                *((char *)PyArray_GETPTR1(mask,ii)));
+            // If no mask_out, compute for all pixels
+            const char msk_out = (mask_out == NULL ? 0 :
+                *((char *)PyArray_GETPTR1(mask_out,ii)));
 
             // Run the core computation on a single gridpoint.
             double bui, ffm, isi, fwi, dsr, dmc, dc;   // Output vars
-            if (msk) {
-                canadafire(
-                    t, h, w, r, im,
-                    ffmc0, dmc0, dc0,    // Running values from one day to the next
-                    &bui, &ffm, &isi, &fwi, &dsr, &dmc, &dc);
-            } else {
+            if (msk_out) {
                 bui = fill_value;
                 ffm = fill_value;
                 isi = fill_value;
                 fwi = fill_value;
                 dmc = fill_value;
                 dc = fill_value;
+            } else {
+                // Keep humidity in range [0,100]
+            	double _h = (h>100. ? 100. : h);
+            	_h = (_h < 0. ? 0. : _h);
+                canadafire(
+                    t, _h, w, r, im,
+                    ffmc0, dmc0, dc0,    // Running values from one day to the next
+                    &bui, &ffm, &isi, &fwi, &dsr, &dmc, &dc);
             }
 
             // housekeeping items
@@ -952,7 +958,7 @@ static PyObject *canadafire_solar_noon(PyObject *module, PyObject *args, PyObjec
     Py_DECREF(msni);
     Py_DECREF(loni);
 
-    return NULL;
+    return PyTuple_Pack(2, msn, asn);
 }
 
 
