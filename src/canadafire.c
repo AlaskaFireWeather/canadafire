@@ -685,110 +685,11 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
 }
 // ============================================================
 // https://stackoverflow.com/questions/11498169/dealing-with-angle-wrap-in-c-code
-static inline double constrain_range(double const x, double const range){
+static inline double constrain_range(double const x, double const range)
+{
     double y = fmod(x,range);
     if (y < 0) return y + range;
     return y;
-}
-
-static inline double constrain_angle(double const x) { return constrain_range(x,360.); }
-
-static inline double equation_of_time0(int const Y, int const M, int const D, double const UT_h)
-/** Compute the Equation of Time, as defined in the paper:
-
-    Mon. Not. R. astr. Soc. (1989) 238,1529-1535
-    The Equation of Time
-    David W. Hughes Department of Physics, University of Sheffield, Sheffield, S3 7RH
-    B.D. Yallop and C.Y. Hohenkerk Royal Greenwich Observatory, Herstmonceux Castle, Hailsham, East Sussex, BN271RP
-
-Y,M,D:
-    Year, month and day to calculate
-UT_h: [0,24)
-    Time of day within the date to calculate (UTC), as fractional hours
-Returns: [0,360)
-    Equation of Time in degrees
-*/
-{
-    // Step A1 (p. 1531)
-    int y,m;
-    if (M>2) {
-        y = Y;
-        m = M-3;
-    } else {
-        y = Y-1;
-        m = M+9;
-    }
-
-    // Step A2-A4 (p. 1531): Julian Date JD
-    int const J_int = (long)(365.25 *(y + 4712)) + (long)(30.6*m + 0.5) + 59 + D;
-    double const J = (double)J_int - 0.5;
-    int const Gn = 38 - (3*((49 + y/100)/4));
-    double const JD = J + Gn;
-
-    double const t = (JD - 2451545.0) / 36525.0;    // T_u
-    double DeltaT;
-    if (Y >= 1650 && Y < 1900) DeltaT = 0;
-    else DeltaT = 1.e-8 * (long)(-3.36 + 1.35*sqr(t + 2.33));
-printf("DeltaT = %g %gy %gh %gm\n", DeltaT, DeltaT*100., DeltaT*(100.*365*24.), DeltaT*(100.*365*24.*60.));
-//DeltaT = 0;
-    double const T = t + DeltaT;
-    double const T2 = T*T;
-    double const T3 = T2*T;
-
-    // Step C: Calculate the Greenwich mean sidereal time
-    double const t2 = t*t;
-    double const t3 = t2*t;
-
-    // Note: the paper has a sign wrong on this formula
-    // For correction, see p. 55 of:
-    // https://ntrs.nasa.gov/api/citations/20030032268/downloads/20030032268.pdf
-    //    NASA/CR-2003-2 1 1937
-    //    Preliminary Design and Analysis of the GIFTS Instrument Pointing System
-    //    Paul P. Zomkowski
-    //    Joint Institutefor Advancement of Flight Sciences
-    //    The George Washington University
-    //    Langley Research Center, Hampton, Virginia
-    // See also:
-    //     JOURNAL OF GEOPHYSICAL RESEARCH, VOL. 102,NO. B9,PAGES 20,469-20,477,SEPTEMBER 10,1997
-    double const r = 1.002737909350795 + 5.9006e-11*t - 5.9e-15*t2;
-
-    double const ST_deg = 15*r*UT_h + 100.4606184 + 36000.77005*t + 0.00038793*t2 - 2.6e-7 * t3;    // [deg]
-printf("t = %1.12e\n", t);
-printf("T = %1.12e\n", T);
-printf("ST_deg %g\n", ST_deg);
-printf("ST (hours) %g %g\n", ST_deg/15., constrain_angle(ST_deg)/15.);
-
-    // Step D:
-    // Calculate the right ascension of the apparent Sun using the Dynamical Time interval T
-
-    // D1: Calculate the solar arguments; the geometric mean ecliptic
-    // longitude of date (L ), the mean anomaly (G), the mean
-    // obliquity of the ecliptic (e), and the equation of the centre
-    // (C).
-    double const L_deg = constrain_angle(280.46607 + 36000.76980*T + 0.0003025*T2);    // [deg]
-    double const G_deg = constrain_angle(357.528 + 35999.0503*T);    // [deg]
-    double const G = G_deg * (M_PI / 180.);
-    double const epsilon_deg = constrain_angle(23.4393 - 0.01300*T- 0.0000002*T2 + 0.0000005*T3);
-    double const epsilon = epsilon_deg * (M_PI / 180.);
-    double const C_deg = constrain_angle((1.9146 - 0.00484*T- 0.000014*T2)*sin(G) + (0.01999 - 0.00008*T)*sin(2.*G));
-
-    // D2: Calculate the ecliptic longitude of date (Lc), from the
-    // mean longitude by applying aberration and the correction to
-    // centre.
-    double const Lc_deg = L_deg + C_deg - .0057;
-    double const Lc = Lc_deg * (M_PI / 180.);
-
-    // D3: Calculate the right ascension
-    double const _y = sqr(tan(.5*epsilon));
-    double const _f = 180. / M_PI;
-    double const alpha_deg = Lc_deg - _y*_f*sin(2.*Lc) + 0.5*_y*_y*_f*sin(4.*Lc);
-
-    // Step E: As stated in equation (3) the Equation of Time, E, in degrees is given by...
-    double E_deg = constrain_angle((ST_deg - alpha_deg) - (15.*UT_h - 180.));
-    // This last line ensures that the discontinuities at 360° are taken into account.
-    if (E_deg > 10) E_deg -= 360.;
-
-    return E_deg;
 }
 
 inline bool is_leap_year(int year)
@@ -796,7 +697,11 @@ inline bool is_leap_year(int year)
     return (year % 4) == 0 && ((year % 100) != 0 || (year % 400) == 0);
 }
 
-/* https://susdesign.com/popups/sunangle/eot.php
+/* Approximate equation of time.
+This is accurate to about 1-2 minutes of time.  One can compare its results against:
+     https://gml.noaa.gov/grad/solcalc/
+
+https://susdesign.com/popups/sunangle/eot.php
 
 For example, the EOT adjustment in mid-February is about -14
 minutes. So when converting clock time to local solar time, you'd
@@ -818,8 +723,6 @@ approximation and much simpler. Note also that the EOT output is in
 hours, so please multiply by 60 if you'd like to obtain results in
 minutes.
 
-This is accurate to about 1-2 minutes of time.  One can compare its results against:
-     https://gml.noaa.gov/grad/solcalc/
 */
 inline double equation_of_time(int const Y, int const doy, double const UT_h)
 {
