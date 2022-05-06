@@ -86,9 +86,8 @@ C
       RAIN=R
       IF(IAST.GT.1) GO TO 110 
       WRITE(2,105)
-  105 FORMAT(///,1X,'  DATE TEMP  RH   WIND  RAIN
-     *   FFMC   DMC    DC
-     *    ISI   BUI   FWI    DSR'/)
+  105 FORMAT(///,1X1X,' DATE  TEMP  RH  WIND   RAIN   FFMC   DMC',
+     *   '     DC   ISI   BUI   FWI     DSR'/)
 C
 C FINE FUEL MOISTURE CODE
 C
@@ -151,16 +150,16 @@ C
 C 
 C     DROUGHT CODE
 C
-      IF(T+2.8.GE.0.)     GO TO 215
-         T=-2.8
+      IF(T+2.8.GE.0.) GO TO 215
+      T=-2.8
   215 PE=(.36*(T+2.8)+FL(J))/2.
-      IF(R.LE.2.8)    GO TO 225
+      IF(R.LE.2.8) GO TO 225
       RA=R
       RW=0.83*RA-1.27
-C     SMI=800.*EXP(-DOT/400.)
-C     DR=DOT-400.*ALOG(1.+((3.937*RW)/SMI)
-C     IF(DR.GT.0.)    GO TO 220
-C     DR=0.0
+      SMI=800.*EXP(-DOT/400.)
+      DR=DOT-400.*ALOG(1.+((3.937*RW)/SMI))   ! Extra r-paren added here
+      IF(DR.GT.0.) GO TO 220
+      DR=0.0
   220 DC=DR+PE
       GO TO 230
   225 DR=DOT
