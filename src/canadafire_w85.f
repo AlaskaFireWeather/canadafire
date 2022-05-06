@@ -24,7 +24,7 @@ C
       DATA LMON /31,28,31,30,31,30,31,31,30,31,30,31/
       DATA EL /6.5,7.5,9.0,12.8,13.9,13.9,12.4,10.9,9.4,8.0,7.0,
      *6.0/
-      DATA FL /-1.6,-12.6,-1.6,9,3.8,5.8,6.4,5.0,2.4,4,-1.6,-1.6/
+      DATA FL /-1.6,-1.6,-1.6,.9,3.8,5.8,6.4,5.0,2.4,.4,-1.6,-1.6/
 
       IUNIT=0    ! Hardcode to metric units
 C
@@ -157,7 +157,7 @@ C
       RA=R
       RW=0.83*RA-1.27
       SMI=800.*EXP(-DOT/400.)
-      DR=DOT-400.*ALOG(1.+((3.937*RW)/SMI))   ! Extra r-paren added here
+      DR=DOT-400.*ALOG(1.+(3.937*RW)/SMI)   ! Extra r-paren added here
       IF(DR.GT.0.) GO TO 220
       DR=0.0
   220 DC=DR+PE
@@ -178,10 +178,10 @@ C
       BUI=(0.8*DC*DMC)/(DMC+0.4*DC)
       GO TO 250
   245 BUI=0.
-C 250 IF(BUI.GE.DMC) GO TO 255
-C     P=(DMC-BUI)/DMC
-C     CC=0.92+(0.0114*DMC)**1.7 
-  250 BUI=DMC-(CC*P)
+  250 IF(BUI.GE.DMC) GO TO 255
+      P=(DMC-BUI)/DMC
+      CC=0.92+(0.0114*DMC)**1.7 
+      BUI=DMC-(CC*P)
       IF(BUI.LT.0.) BUI=0.
   255 IF(BUI.GT.80.)     GO TO 260
       BB=0.1*SI*(0.626*BUI**0.809+2.)
