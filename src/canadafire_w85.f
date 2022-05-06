@@ -18,29 +18,20 @@ C
       DIMENSION LMON(12), EL(12), FL(12),AST(2),TITLE(20)
       LOGICAL*1 DAT(9),YES,YES1,ANS,ANS1
       LOGICAL *1 INFMT(40)
-      TYPE 5
-    5 FORMAT(' INPUT FILENAME: eg: SAMPLE.DAT ',$)
-      ACCEPT 10, INFMT
-   10 FORMAT(40A1)
-      INFMT(40)=0
-      OPEN(UNIT=1,NAME=INFMT,TYPE='OLD',READONLY) 
-      OPEN(UNIT=2,STATUS=FNEW',NAME='F32OUT.DAT')
+      ! Hardcode input filename
+      OPEN(UNIT=1,FILE='f32in.dat',status='old',action='read')
+      OPEN(UNIT=2,FILE='f32out.dat',status='new',action='write')
       DATA LMON /31,28,31,30,31,30,31,31,30,31,30,31/
       DATA EL /6.5,7.5,9.0,12.8,13.9,13.9,12.4,10.9,9.4,8.0,7.0,
      *6.0/
       DATA FL /-1.6,-12.6,-1.6,9,3.8,5.8,6.4,5.0,2.4,4,-1.6,-1.6/
-      DATA AST /",'*//
-      DATA ANS /'Y'/
-      TYPE 15
-   15 FORMAT(//1X,'ENTER VIA KEYBOARD EITHER 0 OR 1 '/1X' 0
-     * IF DATA IS IN METRIC UNITS'/1X' OR 1 IF DATA IS IN
-     * ENGLISH UNITS')
-      READ(5,*) IUNIT
+
+      IUNIT=0    ! Hardcode to metric units
 C
 C     20 - METRIC FORMAT, 25 - ENGLISH FORMAT
 C
    20 FORMAT(F4.1,2I4,F5.1)
-   25 FORMAT(F4.0,214,F5.2)
+   25 FORMAT(F4.0,2I4,F5.2)
 C
 C     READS IN STATION & YEAR.
 C
@@ -49,40 +40,27 @@ C
 C
 C     THIS SECTION ALLOWS FOR INITIAL VALUES OF FFMC, DMC, DC TO BE OPTIONAL 
 C
-      F0=85.0
-      P0=6.0
+      ! Hardcode initial values
+      FO=85.0
+      PO=6.0
       DOT=15.0
-      TYPE 35
-   35 FORMAT(' FFMC=85.0, DMC=6.0, DC=15.0; DO YOU WISH TO USE THESE
-     * INITIAL STANDARD VALUES? [Y/N) '$)
-      ACCEPT 10,ANS1
-      IF(ANS1.EQ.ANS) GO TO 55
-      TYPE-40
 
-   40 FORMAT(' FFMC (F4.1): ',$) 
-      ACCEPT 20,F0
-      TYPE 45
-   45 FORMAT(' DMC (F4.1): ',$) 
-      ACCEPT 20,P0
-      TYPE 50
-   50 FORMAT(' DC (F4.1): ',$) 
-      ACCEPT 20,DOT
 C
 C     READS STARTING MONTH OF THE YEAR AND NUMBER OF DAYS IN STARTING
 C     MONTH.
 C
    55 READ(1,60) M, NDAYS 
-   60 FORMAT(11,I2)
+   60 FORMAT(I1,I2)
       WRITE(2,65)
    65 FORMAT(1H1'PROGRAM NO.: F-32')
-      CALL DATE(DAT)
-      WRITE(2,70) DAT,TITLE
+C      CALL DATE(DAT)
+C      WRITE(2,70) DAT,TITLE
    70 FORMAT(1X,9A1///1X,20A4//)
       WRITE(2,75) FO,PO,DOT
    75 FORMAT(' INITIAL VALUES FOR FFMC:',F5.1,', DMC:',F5.1,', DC:',F5.1,
      *//)
       DO 290 J=M,12
-      NN-LMON(J)
+      NN=LMON(J)
       IF(J.EQ.M) GO TO 80 
       IDAYS=1
       GO TO 85
@@ -97,6 +75,7 @@ C
       W=IW
       GO TO 95
    90 READ(1,20,END=295) T,IH,IW,R
+!      print *,T,IH,IW,R
       W=IW
    95 IF(IUNIT.EQ.0) GO TO 100 
       T=(T-32.)*5./9.
@@ -113,34 +92,34 @@ C
 C
 C FINE FUEL MOISTURE CODE
 C
-  110 wm0=(147.2*(101-F0))/(59.5+FO)
+  110 WMO=(147.2*(101-FO))/(59.5+FO)
       IF(R.GT.0.5) GO TO 115
       GO TO 125 
   115 RA=R-.5
-      IF(wmO.GT.150.) GO TO 120
-      wm0=wM0+42.5*RA*ExP(-100./(251.-wm0))*(1.-ExP(-6.93/RA))
+      IF(WMO.GT.150.) GO TO 120
+      WMO=WMO+42.5*RA*ExP(-100./(251.-WMO))*(1.-EXP(-6.93/RA))
       GO TO 125
-  120 wm0=(wm0+42.5*RA*ExP(-100./(251.-wm0))*(1.-EXP(-6.93/RA)))+ 
-     *(0.0015*(wmo-150.)**2)*RA**.5
-  125 IF(WMO.GT.250.) WM0=250.
-      ED=0.942*(H**0.679)+(11.*EXP((m-100.)/10.))+0.18*(21.1-T) 
-     **(1.-1./ExP(0.115*m))
+  120 WMO=(WMO+42.5*RA*ExP(-100./(251.-WMO))*(1.-EXP(-6.93/RA)))+ 
+     *(0.0015*(WMO-150.)**2)*RA**.5
+  125 IF(WMO.GT.250.) WMO=250.
+      ED=0.942*(H**0.679)+(11.*EXP((H-100.)/10.))+0.18*(21.1-T) 
+     **(1.-1./ExP(0.115*H))
       IF(WMO-ED) 130,135,140
-  130 EW=.618*(m**.753)+(10.*ExP((m-100.)/10.))+.18*(21.1-T) 
+  130 EW=.618*(H**.753)+(10.*ExP((H-100.)/10.))+.18*(21.1-T) 
      **(1.-1./EXP(0.115*H))
       IF(WMO.LT.EW) GO TO 145
   135 WM=WMO
       GO TO 150
-  140 z=0.424*(1.-(H/100.)**1.7)+(0.0694*(W**0.5))*(1.-(H/100.)**8)  
+  140 Z=0.424*(1.-(H/100.)**1.7)+(0.0694*(W**0.5))*(1.-(H/100.)**8)  
       X=Z*(0.581*(EXP(0.0365*T)))
-      wm=ED+(wm0-ED)/10.**X
+      WM=ED+(WMO-ED)/10.**X
       GO TO 150
   145 z=.424*(1.-((100.-H)/100.)**1.7)+(.0694*(W**.5))*(1.-((100.-H) 
      */100.)**8)
-      x=z*(.581*(ExP(.0365*T))) 
-      wm=Ew-(EW-WM0)/10.**x
-  150 FFm=(59.5*(250.-WM))/(147.2+wm)
-      IF(FFm.GT.101.) GO TO 155 
+      X=Z*(.581*(EXP(.0365*T))) 
+      WM=EW-(EW-WMO)/10.**x
+  150 FFM=(59.5*(250.-WM))/(147.2+WM)
+      IF(FFM.GT.101.) GO TO 155 
       IF(FFM) 160,165,165
   155 FFM=101.
       GO TO 165
@@ -150,21 +129,21 @@ C DUFF MOISTURE CODE
 C
   165 IF(T+1.1.GE.0.) GO TO 170 
       T=-1.1
-  170 Rx=1.894*(T+1.1)*(100.-m)*(EL(J)*0.0001)
+  170 RK=1.894*(T+1.1)*(100.-H)*(EL(J)*0.0001)
   175 IF(R.GT.1.5) GO TO 180
       PR=PO
       GO TO 205 
   180 RA=R
-      Rw=0.92*RA-1.27
-      wm1=20.0+280./EXP(0.023*P0)
+      RW=0.92*RA-1.27
+      WMI=20.0+280./EXP(0.023*PO)
       IF(PO.LE.33.) GO TO 185
       IF(PO-65.) 190,190,195
-  185 m=100./(0.5+0.3*P0)
+  185 B=100./(0.5+0.3*PO)
       GO TO 200
-  190 m=14.-1.3*ALOG(120)
+  190 B=14.-1.3*ALOG(PO)
       GO TO 200
-  195 m=6.2*ALOG(P0)-17.2
-  200 wmR=wmi+(1000.*RW)/(48.77+m*Rw) 
+  195 B=6.2*ALOG(PO)-17.2
+  200 WMR=WMI+(1000.*RW)/(48.77+B*RW) 
       PR=43.43*(5.6348-ALOG(WMR-20.))
   205 IF(PR.GE.0.) GO TO 210
       PR=0.0
@@ -203,10 +182,10 @@ C
 C 250 IF(BUI.GE.DMC) GO TO 255
 C     P=(DMC-BUI)/DMC
 C     CC=0.92+(0.0114*DMC)**1.7 
-      BUI=DMC-(CC*P)
+  250 BUI=DMC-(CC*P)
       IF(BUI.LT.0.) BUI=0.
   255 IF(BUI.GT.80.)     GO TO 260
-      BB=0.1*SI*(0.626*BUI**0.809+2.)            •
+      BB=0.1*SI*(0.626*BUI**0.809+2.)
       GO TO 265
   260 BB=0.1*SI*(1000./(25.+108.64/EXP(0.023*BUI)))
   265 IF(BB-1.0.LE.0.) GO TO 270 
@@ -220,15 +199,12 @@ C     CC=0.92+(0.0114*DMC)**1.7
   280 IW=W+0.5
 
       WRITE(2,285) J,I,TX,IH,IW,RAIN,FFM,DMC,DC,SI,BUI,FWI,DSR
-  285 FORMAT(1X,2I3,F6.1,14,16,F7.1,F7.1,F6.1,F7.1,3F6.1,F8.2) 
+  285 FORMAT(1X,2I3,F6.1,I4,I6,F7.1,F7.1,F6.1,F7.1,3F6.1,F8.2) 
       FO=FFM
       PO=DMC 
       DOT=DC 
       IAST=IAST+1
   290 CONTINUE 
-  295 TYPE 300 
-
-  300 FORMAT(/1X'OUTPUT IN F32OUT.DAT AND MUST BE SPOOLED
-     * TO THE LINE PRINTER.'//)
+  295 PRINT *,'DONE'
   305 STOP
       END
