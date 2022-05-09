@@ -1,27 +1,27 @@
-C NCLFORTSTART
-        subroutine FIRECODES (tin,hin,win,rin,buiout,fmout,
-     &                       isiout,fwiout,dmcout,dcout)
-C        integer tlen
-        real tin(183),hin(183)
-        real win(183),rin(183)
-        real fmout(183),isiout(183)
-        real fwiout(183),dmcout(183)
-        real buiout(183),dcout(183)
-C        integer indate,yr,mon,day,hr
-C        character*10 timez
-C NCLEND
-C        write(timez,'(i10)') indate
-C        read(timez,'(i4,3i2)') yr,mon,day,hr
-
-C        call main1io(t2,precp,q2,press,yr,mon,day,hr,tlen,bui)
-        call canadafire(tin,hin,win,rin,buiout,fmout,isiout,
-     &           fwiout,dmcout,dcout)
-        
-        return 
-        end
+!C NCLFORTSTART
+!        subroutine FIRECODES (tin,hin,win,rin,buiout,fmout,
+!     &                       isiout,fwiout,dmcout,dcout)
+!C        integer tlen
+!        real tin(183),hin(183)
+!        real win(183),rin(183)
+!        real fmout(183),isiout(183)
+!        real fwiout(183),dmcout(183)
+!        real buiout(183),dcout(183)
+!C        integer indate,yr,mon,day,hr
+!C        character*10 timez
+!C NCLEND
+!C        write(timez,'(i10)') indate
+!C        read(timez,'(i4,3i2)') yr,mon,day,hr
+!
+!C        call main1io(t2,precp,q2,press,yr,mon,day,hr,tlen,bui)
+!        call canadafire(tin,hin,win,rin,buiout,fmout,isiout,
+!     &           fwiout,dmcout,dcout)
+!        
+!        return 
+!        end
 c***************************************************************************************
-        subroutine canadafire(tin,hin,win,rin,buiout,fmout,isiout,
-     &        fwiout,dmcout,dcout)
+        subroutine canadafire(monthin,dayin,tin,hin,win,rin,
+     &        buiout,fmout,isiout,fwiout,dmcout,dcout)
 c input an array of tin, hin, win, and rin from one grid point, from April 1 to Sept 30, julian day 91 (april 1) to julian day 273
 c tin is in C, hin is %, win km/hr, and rin in mm
         implicit none
@@ -43,9 +43,9 @@ c FL   = DC Day Length Factors
 
 c declarations
 c array of data from the main program
-        real tin(91:273), hin(91:273),win(91:273),rin(91:273)
-        real fmout(91:273), isiout(91:273),fwiout(91:273),dmcout(91:273)
-        real buiout(91:273),dcout(91:273)
+        integer, dimension(:) :: monthin,dayin
+        real, dimension(:) :: tin,hin,win,rin
+        real, dimension(:) :: buiout,fmout,isiout,fwiout,dmcout,dcout
 c 
         real le(12),lf(12)
         real undef
@@ -74,15 +74,11 @@ c 3 fuel moisture codes, initialize
        ffmc0 =85.5
        dmc0=6.0
        dc0=15.0
-       
-       
 
-c keep track of julian day
-            jday=90
-c start on april 1 and go to september 30 
-       do 290 im=4,9  
-         do 290 iday=1,lmon(im)
-            jday = jday +1
+       do 290 jday=1,size(monthin)
+            im=monthin(jday)
+            iday=dayin(jday)
+
 c move the data from the array to the variable for the calculation on a given day
             t = tin(jday)
             h = hin(jday)
