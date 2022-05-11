@@ -20,7 +20,7 @@ C
       LOGICAL *1 INFMT(40)
       ! Hardcode input filename
       OPEN(UNIT=1,FILE='f32in.dat',status='old',action='read')
-      OPEN(UNIT=2,FILE='f32out.dat',status='new',action='write')
+      OPEN(UNIT=2,FILE='f32out_w85.dat',status='replace',action='write')
       DATA LMON /31,28,31,30,31,30,31,31,30,31,30,31/
       DATA EL /6.5,7.5,9.0,12.8,13.9,13.9,12.4,10.9,9.4,8.0,7.0,
      *6.0/

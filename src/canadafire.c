@@ -505,7 +505,7 @@ static PyObject* canadafire_canadafire(PyObject *module, PyObject *args, PyObjec
     // -----------------------------------------
     // Make sure main arrays all have same rank and dimensions
     for (int i=0; i<ninputs; ++i) {
-        if (!check_rank_dims(input_names[i], inputs0[i], input_names[0], inputs0[0]))
+        if (!check_rank_dims(input_names[0], inputs0[0], input_names[i], inputs0[i]))
             return NULL;
     }
 

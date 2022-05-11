@@ -21,7 +21,7 @@
 !        end
 c***************************************************************************************
         subroutine canadafire(monthin,dayin,tin,hin,win,rin,
-     &        buiout,fmout,isiout,fwiout,dmcout,dcout)
+     &        buiout,fmout,isiout,fwiout,dmcout,dcout,dsrout)
 c input an array of tin, hin, win, and rin from one grid point, from April 1 to Sept 30, julian day 91 (april 1) to julian day 273
 c tin is in C, hin is %, win km/hr, and rin in mm
         implicit none
@@ -45,7 +45,8 @@ c declarations
 c array of data from the main program
         integer, dimension(:) :: monthin,dayin
         real, dimension(:) :: tin,hin,win,rin
-        real, dimension(:) :: buiout,fmout,isiout,fwiout,dmcout,dcout
+        real, dimension(:) :: buiout,fmout,isiout,fwiout,
+     &       dmcout,dcout,dsrout
 c 
         real le(12),lf(12)
         real undef
@@ -315,6 +316,7 @@ c move the bui array item into the array for the day
                  fwiout(jday)=s
                  dmcout(jday)=dmc
                  dcout(jday)=dc
+                 dsrout(jday)=dsr
 
  290             continue
 
