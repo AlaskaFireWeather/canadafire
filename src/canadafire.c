@@ -10,7 +10,7 @@
 
 
 static char module_docstring[] = "\
-Module computes the Canada Fire Index on a gridded dataset.";
+Canadafire 1.1.0 module computes the Canada Fire Index on a gridded dataset.";
 
 // For help with Python extension:
 // https://stackoverflow.com/questions/56182259/how-does-one-acces-numpy-multidimensionnal-array-in-c-extensions
