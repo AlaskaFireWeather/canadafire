@@ -4,6 +4,7 @@ import re
 import pandas as pd
 import canadafire
 import functools
+import contextlib
 
 TEST_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -44,16 +45,23 @@ def read_f32out(fname):
 # -------------------------------------------
 
 def get_fortran(suffix):
-    os.chdir(TEST_DIR)
-    cmd = ['gfortran', f'canadafire{suffix}.f', '-o', f'canadafire{suffix}']
-    subprocess.run(cmd, check=True)
+    try:
+        os.chdir(TEST_DIR)
+        cmd = ['gfortran', f'canadafire{suffix}.f', '-o', f'canadafire{suffix}']
+        subprocess.run(cmd, check=True)
 
-    cmd = [os.path.join(TEST_DIR, f'canadafire{suffix}')]
-    subprocess.run(cmd, check=True)
+        cmd = [os.path.join(TEST_DIR, f'canadafire{suffix}')]
+        subprocess.run(cmd, check=True)
 
-    df1 = read_f32out(f'f32out{suffix}.dat')
+        df1 = read_f32out(f'f32out{suffix}.dat')
 
-    return df1
+        return df1
+
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(f'f32out{suffix}.dat')
+            os.remove(f'canadafire{suffix}')
+
 
 # ------------------------------------
 def _col(df, cname):
