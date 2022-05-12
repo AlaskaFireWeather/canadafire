@@ -6,27 +6,13 @@
         real, dimension(:), allocatable :: buiout,fmout,
      &       isiout,fwiout,dmcout,dcout,dsrout
 
-      integer, parameter :: ntime = 49
+!      integer, parameter :: ntime = 49
       integer, dimension(12) :: lmon
       real, dimension(12) :: el,fl
 
-      allocate(monthin(ntime))
-      allocate(dayin(ntime))
-      allocate(tin(ntime))
-      allocate(hin(ntime))
-      allocate(win(ntime))
-      allocate(rin(ntime))
-      allocate(buiout(ntime))
-      allocate(fmout(ntime))
-      allocate(isiout(ntime))
-      allocate(fwiout(ntime))
-      allocate(dmcout(ntime))
-      allocate(dcout(ntime))
-      allocate(dsrout(ntime))
-
-
-      ! Hardcode input filename
-      OPEN(UNIT=1,FILE='f32in.dat',status='old',action='read')
+       ! Hardcode input filename
+C Read input from STDIN
+C      OPEN(UNIT=1,FILE='f32in.dat',status='old',action='read')
       OPEN(UNIT=2,FILE='f32out_2021.dat',
      &    status='replace',action='write')
       
@@ -44,15 +30,31 @@ C
 C
 C     READS IN STATION & YEAR.
 C
-      READ(1,30) TITLE
+      READ(5,30) TITLE
    30 FORMAT(20A4)
 
 C
 C     READS STARTING MONTH OF THE YEAR AND NUMBER OF DAYS IN STARTING
 C     MONTH.
 C
-   55 READ(1,60) M, NDAYS 
-   60 FORMAT(I1,I2)
+   55 READ(5,60) M, NDAYS, NTIME 
+   60 FORMAT(I1,I2,I4)
+
+      allocate(monthin(ntime))
+      allocate(dayin(ntime))
+      allocate(tin(ntime))
+      allocate(hin(ntime))
+      allocate(win(ntime))
+      allocate(rin(ntime))
+      allocate(buiout(ntime))
+      allocate(fmout(ntime))
+      allocate(isiout(ntime))
+      allocate(fwiout(ntime))
+      allocate(dmcout(ntime))
+      allocate(dcout(ntime))
+      allocate(dsrout(ntime))
+
+
       WRITE(2,65)
    65 FORMAT(1H1'PROGRAM NO.: F-32')
 C      CALL DATE(DAT)
@@ -73,7 +75,7 @@ C      WRITE(2,70) DAT,TITLE
 
         IAST=1
         DO I=IDAYS,NN
-          READ(1,20,END=295) T,IH,IW,R
+          READ(5,20,END=295) T,IH,IW,R
           W=IW
           TX=T
           H=IH
@@ -93,6 +95,7 @@ C      WRITE(2,70) DAT,TITLE
 ! Now we write our own stuff!
  295  print *,'Done reading2'
 
+      print *,monthin
       call canadafire(monthin,dayin,
      &     tin,hin,win,rin,
      &     buiout,fmout,isiout,fwiout,dmcout,dcout,dsrout)
@@ -101,6 +104,7 @@ C      WRITE(2,70) DAT,TITLE
   105 FORMAT(///,1X1X,' DATE  TEMP  RH  WIND   RAIN   FFMC   DMC',
      *   '     DC   ISI   BUI   FWI     DSR'/)
 
+      print *,monthin
       do jday=1,size(monthin)
         j=monthin(jday)
         i=dayin(jday)

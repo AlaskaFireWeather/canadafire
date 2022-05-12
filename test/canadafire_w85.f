@@ -19,7 +19,8 @@ C
       LOGICAL*1 DAT(9),YES,YES1,ANS,ANS1
       LOGICAL *1 INFMT(40)
       ! Hardcode input filename
-      OPEN(UNIT=1,FILE='f32in.dat',status='old',action='read')
+C Read input from STDIN
+C      OPEN(UNIT=1,FILE='f32in.dat',status='old',action='read')
       OPEN(UNIT=2,FILE='f32out_w85.dat',status='replace',action='write')
       DATA LMON /31,28,31,30,31,30,31,31,30,31,30,31/
       DATA EL /6.5,7.5,9.0,12.8,13.9,13.9,12.4,10.9,9.4,8.0,7.0,
@@ -35,7 +36,7 @@ C
 C
 C     READS IN STATION & YEAR.
 C
-      READ(1,30) TITLE
+      READ(5,30) TITLE
    30 FORMAT(20A4)
 C
 C     THIS SECTION ALLOWS FOR INITIAL VALUES OF FFMC, DMC, DC TO BE OPTIONAL 
@@ -49,8 +50,8 @@ C
 C     READS STARTING MONTH OF THE YEAR AND NUMBER OF DAYS IN STARTING
 C     MONTH.
 C
-   55 READ(1,60) M, NDAYS 
-   60 FORMAT(I1,I2)
+   55 READ(5,60) M, NDAYS, NTIME 
+   60 FORMAT(I1,I2,I4)
       WRITE(2,65)
    65 FORMAT(1H1'PROGRAM NO.: F-32')
 C      CALL DATE(DAT)
@@ -71,10 +72,10 @@ C
    85 IAST=1
       DO 290 I=IDAYS,NN
       IF(IUNIT.EQ.0) GO TO 90 
-      READ(1,25,END=295) T,IH,IW,R
+      READ(5,25,END=295) T,IH,IW,R
       W=IW
       GO TO 95
-   90 READ(1,20,END=295) T,IH,IW,R
+   90 READ(5,20,END=295) T,IH,IW,R
 !      print *,T,IH,IW,R
       W=IW
    95 IF(IUNIT.EQ.0) GO TO 100 

@@ -9,7 +9,7 @@ import contextlib
 TEST_DIR = os.path.dirname(os.path.realpath(__file__))
 
 header_re = re.compile( (r'\s+([^\d\s]+)'*12) + r'\s*')
-data_re = re.compile( (r'\s+([\d\.]+)' * 13) + r'\s*')
+data_re = re.compile( (r'\s+([-\d\.]+)' * 13) + r'\s*')
 
 
 # -------------------------------------------
@@ -39,28 +39,33 @@ def read_f32out(fname):
                 rows.append(dict(zip(headers, vals)))
                 continue
 
+            # NO MATCH!!!
+            print('NO MATCH {}'.format(line))
+
     # Assemble dataframe of what the legacy FORTRAN 77 code produced.
     df1 = pd.DataFrame(rows)
     return df1
 # -------------------------------------------
 
-def get_fortran(suffix):
+def get_fortran(suffix, input_file):
     try:
         os.chdir(TEST_DIR)
         cmd = ['gfortran', f'canadafire{suffix}.f', '-o', f'canadafire{suffix}']
         subprocess.run(cmd, check=True)
 
-        cmd = [os.path.join(TEST_DIR, f'canadafire{suffix}')]
-        subprocess.run(cmd, check=True)
+        with open(input_file, 'r') as fin:
+            cmd = [os.path.join(TEST_DIR, f'canadafire{suffix}')]
+            subprocess.run(cmd, stdin=fin, check=True)
 
         df1 = read_f32out(f'f32out{suffix}.dat')
 
         return df1
 
     finally:
-        with contextlib.suppress(FileNotFoundError):
-            os.remove(f'f32out{suffix}.dat')
-            os.remove(f'canadafire{suffix}')
+        pass
+#        with contextlib.suppress(FileNotFoundError):
+#            os.remove(f'f32out{suffix}.dat')
+#            os.remove(f'canadafire{suffix}')
 
 
 # ------------------------------------
@@ -125,19 +130,20 @@ tolerance_2021 = dict(FFMC=0.1, DMC=0.001, DC=0.001, ISI=0.3, BUI=0.001, FWI=0.4
 tolerance_pyext = dict(FFMC=0.06, DMC=0.06, DC=0.06, ISI=0.06, BUI=0.06, FWI=0.06, DSR=0.06)
 tolerance_pyext_df0 = dict(FFMC=0.1, DMC=0.06, DC=0.06, ISI=0.3, BUI=0.06, FWI=0.4, DSR=0.1)
 
-def test_fortran_w85():
-    print('------------------------ test_fortran_w85')
-    compare_answer(get_fortran('_w85'), get_answer(), tolerance_w85)
+inputs = ('f32in.dat', 'fairbanks.dat')
 
-def test_fortran_2021():
-    print('------------------------ test_fortran_2021')
+def test_fortran_w85_0():
+    print('------------------------ test_fortran_w85 {}'.format('f32in.dat'))
+    compare_answer(get_fortran('_w85', 'f32in.dat'), get_answer(), tolerance_w85)
+
+def test_fortran_2021_0():
+    print('------------------------ test_fortran_2021 {}'.format('f32in.dat'))
     df0 = get_answer()
-    df1 = get_fortran('_2021')
+    df1 = get_fortran('_2021', 'f32in.dat')
     compare_answer(df1, df0, tolerance_2021)
 
-
 def test_pythonext():
-    df1 = get_fortran('_2021').drop('DSR', axis=1)
+    df1 = get_fortran('_2021', 'f32in.dat').drop('DSR', axis=1)
     df0 = get_answer().drop('DSR', axis=1)
     df2 = get_pythonext()
 
@@ -147,4 +153,13 @@ def test_pythonext():
     # ...and should match original Van Wagner 1985 answer with same
     # tolerance as the derivative Fortran code.
     compare_answer(df2, df0, tolerance_pyext_df0)
+
+
+def test_fortran_fairbanks():
+    print('------------------------ test_fortran_fairbanks {}'.format('fairbanks.dat'))
+    df1 = get_fortran('_w85', 'fairbanks.dat')
+    df2 = get_fortran('_2021', 'fairbanks.dat')
+    print(df2 - df1)
+#    compare_answer(df2, df1, tolerance_2021)
+
 
